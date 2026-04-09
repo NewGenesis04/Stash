@@ -1,0 +1,11 @@
+[project]
+name = "stash"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.2",
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+    "textual>=8.2.3",
+    "tinydb>=4.8.2",
+]

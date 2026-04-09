@@ -1,0 +1,17 @@
+/* Stash — app-level layout styles */
+
+Screen {
+    layout: horizontal;
+}
+
+#left {
+    width: 1fr;
+    height: 100%;
+    padding: 1;
+}
+
+#right {
+    width: 1fr;
+    height: 100%;
+    padding: 1;
+}

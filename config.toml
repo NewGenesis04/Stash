@@ -1,0 +1,10 @@
+[ollama]
+endpoint = "http://localhost:11434"
+# model is set on first run via the TUI model picker and saved here automatically.
+# To reset, delete this line and restart.
+# model = ""
+
+[data]
+dir = "~/.stash"
+db_path = "~/.stash/stash.db"
+rules_path = "~/.stash/rules.json"
