@@ -2,6 +2,8 @@
 rm — delete a file. Does not delete directories.
 """
 
+from pathlib import Path
+
 from pydantic import BaseModel
 
 
@@ -17,4 +19,10 @@ SCHEMA = {
 
 
 def rm_tool(path: str) -> str:
-    raise NotImplementedError
+    p = Path(path)
+    if not p.exists():
+        return f"error: path does not exist: {path}"
+    if p.is_dir():
+        return f"error: will not delete a directory: {path}"
+    p.unlink()
+    return f"deleted {path}"

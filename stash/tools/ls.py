@@ -2,6 +2,8 @@
 ls — list the contents of a directory.
 """
 
+from pathlib import Path
+
 from pydantic import BaseModel
 
 
@@ -17,4 +19,12 @@ SCHEMA = {
 
 
 def ls_tool(path: str) -> str:
-    raise NotImplementedError
+    p = Path(path)
+    if not p.exists():
+        return f"error: path does not exist: {path}"
+    if not p.is_dir():
+        return f"error: not a directory: {path}"
+    entries = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name))
+    if not entries:
+        return "(empty)"
+    return "\n".join(e.name + ("/" if e.is_dir() else "") for e in entries)

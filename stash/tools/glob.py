@@ -2,6 +2,8 @@
 glob — find files matching a pattern.
 """
 
+from pathlib import Path
+
 from pydantic import BaseModel
 
 
@@ -18,4 +20,10 @@ SCHEMA = {
 
 
 def glob_tool(pattern: str, base_path: str = ".") -> str:
-    raise NotImplementedError
+    base = Path(base_path)
+    if not base.exists():
+        return f"error: base_path does not exist: {base_path}"
+    matches = sorted(base.glob(pattern))
+    if not matches:
+        return "(no matches)"
+    return "\n".join(str(m) for m in matches)

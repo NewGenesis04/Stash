@@ -31,16 +31,24 @@ class RulesDB:
         self._table = self._db.table("rules")
 
     def all(self) -> list[FolderRule]:
-        raise NotImplementedError
+        return [FolderRule(**doc) for doc in self._table.all()]
 
     def get(self, rule_id: str) -> FolderRule | None:
-        raise NotImplementedError
+        Rule = Query()
+        doc = self._table.get(Rule.id == rule_id)
+        return FolderRule(**doc) if doc else None
 
     def upsert(self, rule: FolderRule) -> None:
-        raise NotImplementedError
+        Rule = Query()
+        self._table.upsert(rule.model_dump(), Rule.id == rule.id)
 
     def delete(self, rule_id: str) -> None:
-        raise NotImplementedError
+        Rule = Query()
+        self._table.remove(Rule.id == rule_id)
 
     def update_last_run(self, rule_id: str, status: str) -> None:
-        raise NotImplementedError
+        Rule = Query()
+        self._table.update(
+            {"last_run": datetime.now(UTC).isoformat(), "last_run_status": status},
+            Rule.id == rule_id,
+        )

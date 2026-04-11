@@ -2,6 +2,8 @@
 rename — rename a file or directory within the same parent directory.
 """
 
+from pathlib import Path
+
 from pydantic import BaseModel
 
 
@@ -18,4 +20,11 @@ SCHEMA = {
 
 
 def rename_tool(path: str, new_name: str) -> str:
-    raise NotImplementedError
+    p = Path(path)
+    if not p.exists():
+        return f"error: path does not exist: {path}"
+    dst = p.parent / new_name
+    if dst.exists():
+        return f"error: destination already exists: {dst}"
+    p.rename(dst)
+    return f"renamed {p.name} → {new_name}"

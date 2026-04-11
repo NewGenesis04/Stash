@@ -2,6 +2,8 @@
 mkdir — create a directory (and any missing parents).
 """
 
+from pathlib import Path
+
 from pydantic import BaseModel
 
 
@@ -17,4 +19,5 @@ SCHEMA = {
 
 
 def mkdir_tool(path: str) -> str:
-    raise NotImplementedError
+    Path(path).mkdir(parents=True, exist_ok=True)
+    return f"created {path}"

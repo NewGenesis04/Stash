@@ -34,11 +34,13 @@ Before anything touches your filesystem, Stash shows you the full plan. Every st
 
 A few decisions I'm proud of:
 
-**The agent is stateless.** Each run is independent — task in, step log out. No hidden state accumulating between runs, no surprises after a long uptime.
+**The agent remembers.** Conversation history persists across runs, so preferences you express once — how you like files named, folder structures you prefer, things you've told it to leave alone — carry forward. You talk to it in plain English, and it builds up a picture of how you like things done.
 
 **The tool set is explicit and minimal.** `ls`, `glob`, `mv`, `rename`, `mkdir`, `rm`. That's it. The agent can only use tools the rule permits. This isn't minimalism for its own sake — it's the thing that makes it safe to run unsupervised.
 
 **The TUI is the message bus.** Rather than a separate pub/sub layer, everything routes through the Textual app via its native message-passing. The scheduler, the agent callbacks, the health checks — they all speak to one hub. Simple to reason about, easy to extend.
+
+**Folder rules are how you delegate trust.** A rule is a standing contract — a folder, a plain-English instruction, a set of permitted tools, and a schedule. Stash runs it on the interval you set, every time, without prompting. Want your downloads sorted every six hours? Your media folder renamed for clean playlist ordering every night? Write it once, set the cadence, and forget the folder exists. Each rule carries its own tool allowlist too — a rule that organises can't delete, a rule that renames can't move things out of the folder. The scope is narrow by design, because unsupervised access should always be earned, not assumed.
 
 **Model choice is yours.** Gemma 4 was the spark, but Stash runs on any model you have pulled in Ollama. First launch, it asks you to pick. After that, it remembers. Change your mind? One line in `config.toml`.
 

@@ -8,10 +8,12 @@ Add callbacks without touching any other layer. Default set:
 """
 
 import logging
+import sqlite3
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from stash.tui.app import StashApp
+    from stash.persistence.tinydb import RulesDB
 
 log = logging.getLogger(__name__)
 
@@ -25,14 +27,25 @@ class Callback(Protocol):
 class AuditLogger:
     """Writes every tool call to the SQLite audit log."""
 
+    def __init__(self, conn: "sqlite3.Connection", run_id: str) -> None:
+        self._conn = conn
+        self._run_id = run_id
+
     def on_before(self, tool: str, args: dict) -> None:
-        raise NotImplementedError
+        pass
 
     def on_after(self, tool: str, args: dict, result: str) -> None:
-        raise NotImplementedError
+        from stash.core.agent import ReActStep
+        import stash.persistence.sqlite as db
+        step = ReActStep(type="observation", content=result, tool=tool, args=args, result=result)
+        db.log_step(self._conn, self._run_id, step)
 
     def on_error(self, tool: str, args: dict, error: Exception) -> None:
-        raise NotImplementedError
+        from stash.core.agent import ReActStep
+        import stash.persistence.sqlite as db
+        step = ReActStep(type="observation", content=str(error), tool=tool, args=args, result=str(error))
+        db.log_step(self._conn, self._run_id, step)
+        db.finish_run(self._conn, self._run_id, "failed")
 
 
 class TUIUpdater:
@@ -58,16 +71,17 @@ class TUIUpdater:
 
 
 class StatusTracker:
-    """Updates last_run and last_run_status in TinyDB after scheduled rule runs."""
+    """Marks a rule's last run as failed in TinyDB if a tool errors mid-run."""
 
-    def __init__(self, rule_id: str) -> None:
-        self.rule_id = rule_id
+    def __init__(self, rules_db: "RulesDB", rule_id: str) -> None:
+        self._db = rules_db
+        self._rule_id = rule_id
 
     def on_before(self, tool: str, args: dict) -> None:
         pass
 
     def on_after(self, tool: str, args: dict, result: str) -> None:
-        raise NotImplementedError
+        pass
 
     def on_error(self, tool: str, args: dict, error: Exception) -> None:
-        raise NotImplementedError
+        self._db.update_last_run(self._rule_id, "failed")
