@@ -28,6 +28,8 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 def _migrate(conn: sqlite3.Connection) -> None:
     conn.executescript("""
+        PRAGMA journal_mode=WAL;
+
         CREATE TABLE IF NOT EXISTS task_runs (
             id          TEXT PRIMARY KEY,
             rule_id     TEXT,
