@@ -9,11 +9,14 @@ Schema
 """
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, UTC
 from pathlib import Path
 
 from stash.core.agent import ReActStep
+
+log = logging.getLogger(__name__)
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -62,6 +65,7 @@ def begin_run(conn: sqlite3.Connection, run_id: str, task: str, rule_id: str | N
         (run_id, rule_id, task, datetime.now(UTC).isoformat()),
     )
     conn.commit()
+    log.debug("sqlite.begin_run", extra={"run_id": run_id, "rule_id": rule_id})
 
 
 def finish_run(conn: sqlite3.Connection, run_id: str, status: str) -> None:
@@ -70,6 +74,7 @@ def finish_run(conn: sqlite3.Connection, run_id: str, status: str) -> None:
         (status, datetime.now(UTC).isoformat(), run_id),
     )
     conn.commit()
+    log.debug("sqlite.finish_run", extra={"run_id": run_id, "status": status})
 
 
 def log_step(conn: sqlite3.Connection, run_id: str, step: ReActStep) -> None:
@@ -89,6 +94,7 @@ def log_step(conn: sqlite3.Connection, run_id: str, step: ReActStep) -> None:
         ),
     )
     conn.commit()
+    log.debug("sqlite.log_step", extra={"run_id": run_id, "step_type": step.type, "tool": step.tool})
 
 
 def add_message(conn: sqlite3.Connection, role: str, content: str, rule_id: str | None = None) -> None:
@@ -97,6 +103,7 @@ def add_message(conn: sqlite3.Connection, role: str, content: str, rule_id: str 
         (rule_id, role, content, datetime.now(UTC).isoformat()),
     )
     conn.commit()
+    log.debug("sqlite.add_message", extra={"rule_id": rule_id, "role": role})
 
 
 def get_history(conn: sqlite3.Connection, rule_id: str | None = None, limit: int = 20) -> list[dict]:
@@ -104,4 +111,5 @@ def get_history(conn: sqlite3.Connection, rule_id: str | None = None, limit: int
         "SELECT role, content FROM conversations WHERE rule_id IS ? ORDER BY id DESC LIMIT ?",
         (rule_id, limit),
     ).fetchall()
+    log.debug("sqlite.get_history", extra={"rule_id": rule_id, "limit": limit, "returned": len(rows)})
     return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]

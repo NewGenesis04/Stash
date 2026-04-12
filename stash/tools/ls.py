@@ -15,6 +15,7 @@ SCHEMA = {
     "name": "ls",
     "description": "List the files and directories at the given path.",
     "args": LsArgs.model_json_schema(),
+    "readonly": True,
 }
 
 

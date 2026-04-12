@@ -11,7 +11,6 @@ Outcomes:
 import logging
 from enum import Enum
 
-import httpx
 from pydantic import BaseModel
 
 log = logging.getLogger(__name__)

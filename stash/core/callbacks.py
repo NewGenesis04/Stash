@@ -39,6 +39,7 @@ class AuditLogger:
         import stash.persistence.sqlite as db
         step = ReActStep(type="observation", content=result, tool=tool, args=args, result=result)
         db.log_step(self._conn, self._run_id, step)
+        log.debug("audit.step_logged", extra={"run_id": self._run_id, "tool": tool})
 
     def on_error(self, tool: str, args: dict, error: Exception) -> None:
         from stash.core.agent import ReActStep
@@ -46,6 +47,7 @@ class AuditLogger:
         step = ReActStep(type="observation", content=str(error), tool=tool, args=args, result=str(error))
         db.log_step(self._conn, self._run_id, step)
         db.finish_run(self._conn, self._run_id, "failed")
+        log.error("audit.run_failed", extra={"run_id": self._run_id, "tool": tool, "error": str(error)})
 
 
 class TUIUpdater:
@@ -85,3 +87,4 @@ class StatusTracker:
 
     def on_error(self, tool: str, args: dict, error: Exception) -> None:
         self._db.update_last_run(self._rule_id, "failed")
+        log.error("status_tracker.rule_failed", extra={"rule_id": self._rule_id, "tool": tool, "error": str(error)})

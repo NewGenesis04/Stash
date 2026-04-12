@@ -5,11 +5,14 @@ Each rule document matches the FolderRule schema. Rules are read by the
 scheduler on boot and mutated through the TUI rule editor.
 """
 
+import logging
 from datetime import datetime, UTC
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 from tinydb import TinyDB, Query
+
+log = logging.getLogger(__name__)
 
 
 class FolderRule(BaseModel):
@@ -41,10 +44,12 @@ class RulesDB:
     def upsert(self, rule: FolderRule) -> None:
         Rule = Query()
         self._table.upsert(rule.model_dump(), Rule.id == rule.id)
+        log.debug("rules_db.upsert", extra={"rule_id": rule.id, "name": rule.name})
 
     def delete(self, rule_id: str) -> None:
         Rule = Query()
         self._table.remove(Rule.id == rule_id)
+        log.debug("rules_db.delete", extra={"rule_id": rule_id})
 
     def update_last_run(self, rule_id: str, status: str) -> None:
         Rule = Query()
@@ -52,3 +57,4 @@ class RulesDB:
             {"last_run": datetime.now(UTC).isoformat(), "last_run_status": status},
             Rule.id == rule_id,
         )
+        log.debug("rules_db.update_last_run", extra={"rule_id": rule_id, "status": status})

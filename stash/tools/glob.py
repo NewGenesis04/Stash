@@ -16,6 +16,7 @@ SCHEMA = {
     "name": "glob",
     "description": "Find files matching a glob pattern, relative to base_path.",
     "args": GlobArgs.model_json_schema(),
+    "readonly": True,
 }
 
 
