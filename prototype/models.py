@@ -1,16 +1,16 @@
-from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Literal
 
+from pydantic import BaseModel, Field
 
-@dataclass
-class ReActStep:
+
+class ReActStep(BaseModel):
     type: Literal["thought", "action", "observation", "final"]
     content: str
     tool: str | None = None
     args: dict | None = None
     result: str | None = None
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 # Hardcoded plan for a "clean up Downloads" task.

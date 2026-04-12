@@ -33,17 +33,20 @@ class StashScheduler:
     def __init__(
         self,
         rules_db: RulesDB,
-        app: "StashApp",
         tool_registry: ToolRegistry,
         tool_schemas: list[dict],
     ) -> None:
         self._rules_db = rules_db
-        self._app = app
         self._tool_registry = tool_registry
         self._tool_schemas = tool_schemas
         self._scheduler = AsyncIOScheduler()
+        self._app: "StashApp | None" = None
+
+    def set_app(self, app: "StashApp") -> None:
+        self._app = app
 
     def start(self) -> None:
+        assert self._app is not None, "set_app() must be called before start()"
         for rule in self._rules_db.all():
             if rule.enabled:
                 self._register(rule)
@@ -89,6 +92,7 @@ class StashScheduler:
         log.info("scheduler.job_registered", extra={"rule_id": rule.id, "interval_hours": rule.interval_hours})
 
     async def _run_rule(self, rule_id: str) -> None:
+        assert self._app is not None, "set_app() must be called before any job fires"
         from stash.tui.app import RuleCompleted
 
         rule = self._rules_db.get(rule_id)

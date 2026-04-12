@@ -8,6 +8,7 @@ and returns the full step log.
 
 import json
 import logging
+import sqlite3
 import uuid
 from datetime import datetime, UTC
 from typing import Literal
@@ -15,7 +16,7 @@ from typing import Literal
 import ollama
 from pydantic import BaseModel, Field
 
-from stash.core.registry import SessionRegistry, UnauthorisedToolError
+from stash.core.registry import SessionRegistry, ToolRegistry, UnauthorisedToolError
 from stash.core.callbacks import Callback
 
 log = logging.getLogger(__name__)
@@ -208,3 +209,30 @@ class Agent:
         if conn is None:
             return []
         return db.get_history(conn, rule_id=rule_id)
+
+
+class AgentFactory:
+    """
+    Builds configured Agent instances. Injected into StashApp so the app
+    never touches tool internals directly.
+    """
+
+    def __init__(self, config: dict, tool_registry: ToolRegistry, tool_schemas: list[dict]) -> None:
+        self._config = config
+        self._tool_registry = tool_registry
+        self._tool_schemas = tool_schemas
+
+    def build(
+        self,
+        conn: sqlite3.Connection,
+        callbacks: list[Callback],
+        rule_id: str | None = None,
+    ) -> tuple[Agent, SessionRegistry]:
+        """
+        Build an Agent and a full-access SessionRegistry for manual chat sessions.
+        For scheduled rule runs, use the scheduler's own construction path.
+        """
+        config = {**self._config, "_db_conn": conn, "_rule_id": rule_id}
+        registry = self._tool_registry.session(self._tool_registry.all_tools)
+        agent = Agent(config, callbacks, self._tool_schemas)
+        return agent, registry
