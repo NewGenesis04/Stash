@@ -92,9 +92,10 @@ def main() -> None:
             "  Start it with: ollama serve\n"
             "  Then relaunch stash."
         )
-    except NotImplementedError:
-        health_result = None  # health check not yet implemented — proceed
-        log.warning("stash.health_skipped")
+    except Exception as e:
+        # Unexpected error during health check — proceed without result
+        health_result = None
+        log.warning("stash.health_error", extra={"error": str(e)})
 
     # --- object graph ---
     from stash.core.agent import AgentFactory

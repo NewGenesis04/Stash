@@ -102,9 +102,12 @@ class Agent:
         self.config = config
         self.callbacks = callbacks
         self.tools = tools  # list of SCHEMA dicts from each tool module
-        self._client = ollama.Client(host=config.get("ollama_host", "http://localhost:11434"))
-        self._model = config["model"]
-        self._max_steps = config.get("max_steps", 20)
+        ollama_config = config.get("ollama", {})
+        self._client = ollama.Client(host=ollama_config.get("endpoint", "http://localhost:11434"))
+        self._model = ollama_config.get("model")
+        if not self._model:
+            raise ValueError("No model selected. Launch the app and pick a model first.")
+        self._max_steps = ollama_config.get("max_steps", 20)
 
     def plan(self, task: str, registry: SessionRegistry, run_id: str | None = None) -> list[ReActStep]:
         """Dry-run the ReAct loop — tools are not executed. Used for HITL approval."""

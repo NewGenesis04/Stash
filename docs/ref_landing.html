@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary-fixed-dim": "#67df70",
+                        "outline": "#8b919d",
+                        "on-surface-variant": "#c0c7d4",
+                        "on-secondary-container": "#c7aaff",
+                        "primary-container": "#58a6ff",
+                        "surface-tint": "#a2c9ff",
+                        "inverse-primary": "#0060aa",
+                        "primary": "#a2c9ff",
+                        "primary-fixed": "#d3e4ff",
+                        "error": "#ffb4ab",
+                        "primary-fixed-dim": "#a2c9ff",
+                        "secondary-fixed": "#ebddff",
+                        "surface-container-lowest": "#0e0e0f",
+                        "outline-variant": "#414752",
+                        "on-secondary": "#3f008d",
+                        "on-secondary-fixed-variant": "#591db3",
+                        "surface-bright": "#39393a",
+                        "error-container": "#93000a",
+                        "on-error": "#690005",
+                        "on-primary-fixed-variant": "#004882",
+                        "surface": "#131314",
+                        "secondary-fixed-dim": "#d3bbff",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-high": "#2a2a2b",
+                        "on-tertiary-fixed": "#002105",
+                        "surface-container-low": "#1c1b1c",
+                        "surface-container": "#201f20",
+                        "surface-dim": "#131314",
+                        "secondary-container": "#5b21b5",
+                        "tertiary": "#67df70",
+                        "surface-variant": "#353436",
+                        "tertiary-container": "#40ba51",
+                        "on-primary": "#00315c",
+                        "surface-container-highest": "#353436",
+                        "inverse-on-surface": "#313031",
+                        "background": "#131314",
+                        "inverse-surface": "#e5e2e3",
+                        "on-tertiary": "#00390d",
+                        "on-surface": "#e5e2e3",
+                        "on-primary-fixed": "#001c38",
+                        "on-primary-container": "#003a6b",
+                        "on-tertiary-container": "#004411",
+                        "tertiary-fixed": "#83fc89",
+                        "secondary": "#d3bbff",
+                        "on-secondary-fixed": "#250059",
+                        "on-tertiary-fixed-variant": "#005317",
+                        "on-background": "#e5e2e3"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk", "sans-serif"],
+                        "body": ["Space Grotesk", "sans-serif"],
+                        "label": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        @keyframes colorSweep {
+            0%, 100% { color: #58A6FF; }
+            33% { color: #D3BBFF; } /* Approximating 8957E5 with secondary */
+            66% { color: #67DF70; } /* Approximating 3FB950 with tertiary */
+        }
+
+        .ascii-char {
+            display: inline-block;
+            animation: colorSweep 4s infinite linear;
+        }
+
+        .char-1 { animation-delay: 0s; }
+        .char-2 { animation-delay: 0.2s; }
+        .char-3 { animation-delay: 0.4s; }
+        .char-4 { animation-delay: 0.6s; }
+        .char-5 { animation-delay: 0.8s; }
+
+        @keyframes statusCycle {
+            0%, 20% { opacity: 0; content: "Connecting to Ollama..."; }
+            5%, 15% { opacity: 1; }
+            25%, 45% { opacity: 0; content: "Loading rules..."; }
+            30%, 40% { opacity: 1; }
+            50%, 70% { opacity: 0; content: "Warming up..."; }
+            55%, 65% { opacity: 1; }
+            75%, 100% { opacity: 1; content: "Ready"; }
+        }
+
+        .status-text::after {
+            content: "Connecting to Ollama...";
+            animation: statusCycle 5s forwards;
+        }
+
+        @keyframes progressFill {
+            0% { width: 0%; }
+            75%, 100% { width: 100%; }
+        }
+
+        .progress-bar-fill {
+            animation: progressFill 5s forwards;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface font-mono selection:bg-primary-container selection:text-on-primary-container min-h-screen flex flex-col items-center justify-center overflow-hidden">
+<!-- Loading Container -->
+<div class="flex flex-col items-center gap-12 w-full max-w-2xl px-8">
+<!-- 1. ASCII Art Section -->
+<div aria-label="STASH" class="flex flex-col items-center select-none">
+<pre class="leading-none text-[0.6rem] md:text-xs lg:text-sm font-mono whitespace-pre"><span class="ascii-char char-1"> ██████╗████████╗ █████╗ ██████╗██╗  ██╗</span>
+<span class="ascii-char char-2">██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║  ██║</span>
+<span class="ascii-char char-3">╚█████╗    ██║   ███████║╚█████╗ ███████║</span>
+<span class="ascii-char char-4"> ╚═══██╗   ██║   ██╔══██║ ╚═══██╗██╔══██║</span>
+<span class="ascii-char char-5">██████╔╝   ██║   ██║  ██║██████╔╝██║  ██║</span>
+<span class="ascii-char char-5">╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝</span></pre>
+</div>
+<!-- 2. Descriptor Block -->
+<div class="flex flex-col items-center text-center space-y-1">
+<p class="text-[12px] text-outline font-medium tracking-tight">
+                Local-first file management agent
+            </p>
+<p class="text-[10px] text-outline opacity-40 font-bold tracking-[0.2em] uppercase">
+                by NewGenesis
+            </p>
+</div>
+<!-- 3. Status Line + Bar -->
+<div class="w-full flex flex-col items-center gap-4">
+<div class="h-5 flex items-center justify-center">
+<span class="status-text text-[11px] text-tertiary-fixed-dim tracking-widest font-mono"></span>
+</div>
+<!-- Progress Bar Container -->
+<div class="w-2/5 h-[2px] bg-surface-container-highest relative overflow-hidden">
+<div class="progress-bar-fill absolute top-0 left-0 h-full bg-tertiary-fixed-dim"></div>
+</div>
+</div>
+</div>
+<!-- Background Ambient Texture -->
+<div class="fixed inset-0 pointer-events-none opacity-[0.03]" data-alt="subtle dark carbon fiber texture for a technical terminal background atmosphere" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDWX59suAhANr5f-3LcDi89pmXOSHz_gbKXUpIhNTswpekSUdD-FKUKfzNl0D0egniH2pUJG9usEslQvdduuGnCq98bcyPlNfy9IOjtfNRXTnfofVql4GbcHc9LKb1FofA3Kj3FKEIlNH2ASFv-cCj8-JqMZPeSRiTyd6VwCO_l7HEGSS71pCKjYvDJPlH2T6QHTqJHz_EriPRiL-QApAKbw0nPGikJ3CVGjwNvH0yClhvnOcixDX2xCTLihfuWXc-oPyQBxvYbbWyW');">
+</div>
+<!-- Decorative System Metadata (Bottom Corners) -->
+<div class="fixed bottom-8 left-8 flex flex-col gap-1">
+<span class="text-[9px] text-outline opacity-30 font-mono tracking-tighter">NODE_SYSTEM_V4.0.2</span>
+<div class="flex items-center gap-2">
+<div class="w-1 h-1 bg-tertiary rounded-full animate-pulse"></div>
+<span class="text-[9px] text-outline opacity-30 font-mono">ENCRYPTION: AES-256</span>
+</div>
+</div>
+<div class="fixed bottom-8 right-8 flex flex-col items-end gap-1 text-right">
+<span class="text-[9px] text-outline opacity-30 font-mono tracking-tighter">KERNEL_BOOT: OK</span>
+<span class="text-[9px] text-outline opacity-30 font-mono tracking-tighter">IO_PORT: 8080</span>
+</div>
+</body></html>

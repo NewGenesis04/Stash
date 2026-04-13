@@ -1,0 +1,423 @@
+
+<style>
+  .tui-root {
+    font-family: var(--font-mono);
+    background: #0e0e0f;
+    color: #c9d1d9;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #30363d;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .titlebar {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot-red { background: #ff5f57; }
+  .dot-yellow { background: #ffbd2e; }
+  .dot-green { background: #28c840; }
+  .app-title { color: #58a6ff; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; }
+  .status-bar-top {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .badge-green { background: #0d2b1a; color: #3fb950; border: 1px solid #238636; }
+  .badge-blue { background: #0d1f38; color: #58a6ff; border: 1px solid #1f6feb; }
+  .badge-amber { background: #2b1d0a; color: #d29922; border: 1px solid #9e6a03; }
+  .dot-pulse {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #3fb950;
+    display: inline-block;
+  }
+  .main-layout {
+    display: flex;
+    height: 420px;
+  }
+  .chat-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #30363d;
+  }
+  .pane-header {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 5px 12px;
+    color: #8b949e;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pane-header-key {
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #58a6ff;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg { display: flex; flex-direction: column; gap: 3px; }
+  .msg-label { font-size: 10px; color: #8b949e; letter-spacing: 0.04em; }
+  .msg-label.user { color: #58a6ff; }
+  .msg-label.agent { color: #3fb950; }
+  .msg-label.system { color: #d29922; }
+  .msg-content {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: #c9d1d9;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .msg-content.user { border-left: 2px solid #58a6ff; }
+  .msg-content.thought { border-left: 2px solid #8957e5; color: #9e8fdf; font-style: italic; }
+  .msg-content.action { border-left: 2px solid #3fb950; }
+  .msg-content.observation { border-left: 2px solid #d29922; }
+  .msg-content.system { border-left: 2px solid #d29922; background: #161208; }
+  .tool-chip {
+    display: inline-block;
+    background: #0d2b1a;
+    color: #3fb950;
+    border: 1px solid #238636;
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 1px 7px;
+    margin: 1px 2px;
+  }
+  .plan-box {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 4px;
+  }
+  .plan-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid #21262d;
+    font-size: 11px;
+  }
+  .plan-step:last-child { border-bottom: none; }
+  .step-num {
+    color: #58a6ff;
+    min-width: 18px;
+    font-weight: 700;
+  }
+  .step-tool {
+    background: #0d1f38;
+    color: #58a6ff;
+    border: 1px solid #1f6feb;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+    min-width: 44px;
+    text-align: center;
+  }
+  .step-desc { color: #8b949e; flex: 1; }
+  .check-pending { color: #30363d; }
+  .check-done { color: #3fb950; }
+  .approve-bar {
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid;
+  }
+  .btn-approve {
+    background: #0d2b1a;
+    color: #3fb950;
+    border-color: #238636;
+  }
+  .btn-reject {
+    background: #2b0d0d;
+    color: #f85149;
+    border-color: #6e2b2b;
+  }
+  .btn-label { color: #8b949e; font-size: 11px; }
+  .chat-input-area {
+    border-top: 1px solid #30363d;
+    padding: 8px 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: #0d1117;
+  }
+  .prompt-prefix { color: #58a6ff; font-weight: 700; }
+  .fake-input {
+    flex: 1;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 5px 10px;
+    color: #8b949e;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .send-hint { color: #30363d; font-size: 11px; }
+  .sidebar {
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-section {
+    border-bottom: 1px solid #30363d;
+  }
+  .sidebar-section:last-child { border-bottom: none; flex: 1; }
+  .rule-item {
+    padding: 7px 12px;
+    border-bottom: 1px solid #21262d;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .rule-item:last-child { border-bottom: none; }
+  .rule-name { color: #c9d1d9; font-size: 12px; }
+  .rule-meta { color: #8b949e; font-size: 10px; display: flex; justify-content: space-between; }
+  .rule-status-ok { color: #3fb950; }
+  .rule-status-sched { color: #58a6ff; }
+  .log-item {
+    padding: 5px 12px;
+    border-bottom: 1px solid #21262d;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .log-item:last-child { border-bottom: none; }
+  .log-time { color: #8b949e; font-size: 10px; }
+  .log-action { color: #c9d1d9; font-size: 11px; }
+  .log-tool { color: #3fb950; }
+  .log-path { color: #8b949e; }
+  .statusbar {
+    background: #161b22;
+    border-top: 1px solid #30363d;
+    padding: 4px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #8b949e;
+  }
+  .statusbar-keys { display: flex; gap: 12px; }
+  .key-hint { display: flex; align-items: center; gap: 4px; }
+  .key {
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    padding: 0px 5px;
+    border-radius: 3px;
+    font-size: 10px;
+  }
+  .scrollbar-hint { color: #30363d; font-size: 10px; }
+</style>
+
+<div class="tui-root">
+
+  <div class="titlebar">
+    <div class="titlebar-left">
+      <span class="dot dot-red"></span>
+      <span class="dot dot-yellow"></span>
+      <span class="dot dot-green"></span>
+      <span style="margin-left: 8px;" class="app-title">stash</span>
+      <span style="color: #8b949e; font-size: 11px;">v0.1.0</span>
+    </div>
+    <div class="status-bar-top">
+      <span class="badge badge-green"><span class="dot-pulse"></span> ollama running</span>
+      <span class="badge badge-blue">gemma4:4b</span>
+      <span class="badge badge-amber">2 rules active</span>
+    </div>
+  </div>
+
+  <div class="main-layout">
+
+    <div class="chat-pane">
+      <div class="pane-header">
+        <span>task / chat</span>
+        <span class="pane-header-key">ctrl+t</span>
+      </div>
+
+      <div class="chat-messages">
+
+        <div class="msg">
+          <span class="msg-label user">you</span>
+          <div class="msg-content user">
+            go through my Downloads folder and rename any video files that don't have proper titles. move them to /Media/Videos after.
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="msg-label agent">stash — thinking</span>
+          <div class="msg-content thought">
+            I need to first list the Downloads directory, identify video files, check their names, rename where needed, then move them. I'll need glob and ls to scout first, then rename and mv to act.
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="msg-label system">stash — plan ready · awaiting approval</span>
+          <div class="msg-content system">
+            <div style="margin-bottom: 6px; color: #d29922; font-size: 11px;">tools requested: <span class="tool-chip">glob</span><span class="tool-chip">ls</span><span class="tool-chip">rename</span><span class="tool-chip">mv</span></div>
+            <div class="plan-box">
+              <div class="plan-step">
+                <span class="step-num">1.</span>
+                <span class="step-tool">glob</span>
+                <span class="step-desc">find all video files in ~/Downloads</span>
+                <span class="check-pending">○</span>
+              </div>
+              <div class="plan-step">
+                <span class="step-num">2.</span>
+                <span class="step-tool">ls</span>
+                <span class="step-desc">inspect filenames for naming issues</span>
+                <span class="check-pending">○</span>
+              </div>
+              <div class="plan-step">
+                <span class="step-num">3.</span>
+                <span class="step-tool">rename</span>
+                <span class="step-desc">clean up names on flagged files</span>
+                <span class="check-pending">○</span>
+              </div>
+              <div class="plan-step">
+                <span class="step-num">4.</span>
+                <span class="step-tool">mv</span>
+                <span class="step-desc">move all videos → /Media/Videos</span>
+                <span class="check-pending">○</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="msg">
+          <span class="msg-label agent">stash — executing</span>
+          <div class="msg-content action">
+            <span style="color: #3fb950;">▶</span> glob("~/Downloads", "*.{mp4,mkv,avi,mov}") → 11 files found
+          </div>
+        </div>
+
+      </div>
+
+      <div class="approve-bar">
+        <span class="btn-label">approve plan?</span>
+        <button class="btn btn-approve">✓ approve</button>
+        <button class="btn btn-reject">✗ reject</button>
+        <span style="flex:1"></span>
+        <span style="color: #30363d; font-size: 10px;">enter · esc</span>
+      </div>
+
+      <div class="chat-input-area">
+        <span class="prompt-prefix">›</span>
+        <div class="fake-input">type a task or ask anything...</div>
+        <span class="send-hint">enter ↵</span>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="pane-header" style="font-size:11px;">
+        <span>folder rules</span>
+        <span class="pane-header-key">ctrl+r</span>
+      </div>
+      <div class="sidebar-section">
+        <div class="rule-item">
+          <span class="rule-name">Downloads Cleanup</span>
+          <div class="rule-meta">
+            <span>every 6h · glob mv rm</span>
+            <span class="rule-status-ok">● ok</span>
+          </div>
+        </div>
+        <div class="rule-item">
+          <span class="rule-name">Screenshots → /Archive</span>
+          <div class="rule-meta">
+            <span>every 12h · mv mkdir</span>
+            <span class="rule-status-sched">◷ in 4h</span>
+          </div>
+        </div>
+        <div class="rule-item" style="opacity: 0.4;">
+          <span class="rule-name">Desktop Sort</span>
+          <div class="rule-meta">
+            <span>every 24h · ls mv</span>
+            <span style="color: #8b949e;">paused</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane-header" style="font-size:11px;">
+        <span>audit log</span>
+        <span class="pane-header-key">ctrl+l</span>
+      </div>
+      <div class="sidebar-section" style="flex:1; overflow-y: auto;">
+        <div class="log-item">
+          <span class="log-time">today 06:00</span>
+          <div class="log-action"><span class="log-tool">mv</span> <span class="log-path">video_001.mp4 → /Media/Videos</span></div>
+        </div>
+        <div class="log-item">
+          <span class="log-time">today 06:00</span>
+          <div class="log-action"><span class="log-tool">rename</span> <span class="log-path">ep3_final_v2.mkv → s01e03.mkv</span></div>
+        </div>
+        <div class="log-item">
+          <span class="log-time">today 06:00</span>
+          <div class="log-action"><span class="log-tool">rm</span> <span class="log-path">thumbs.db · setup(1).exe</span></div>
+        </div>
+        <div class="log-item">
+          <span class="log-time">yesterday 18:00</span>
+          <div class="log-action"><span class="log-tool">mkdir</span> <span class="log-path">/Archive/2025-01</span></div>
+        </div>
+        <div class="log-item">
+          <span class="log-time">yesterday 18:00</span>
+          <div class="log-action"><span class="log-tool">mv</span> <span class="log-path">14 screenshots → /Archive</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="statusbar">
+    <div class="statusbar-keys">
+      <span class="key-hint"><span class="key">ctrl+t</span> theme cycle</span>
+      <span class="key-hint"><span class="key">ctrl+n</span> new rule</span>
+      <span class="key-hint"><span class="key">ctrl+l</span> audit log</span>
+      <span class="key-hint"><span class="key">ctrl+q</span> quit</span>
+    </div>
+    <span style="color: #3fb950;">stash is idle · scheduler running</span>
+  </div>
+
+</div>

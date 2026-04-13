@@ -127,13 +127,13 @@ class StashScheduler:
             db.finish_run(conn, run_id, "completed")
             self._rules_db.update_last_run(rule_id, "completed")
             log.info("scheduler.run_complete", extra={"rule_id": rule_id, "run_id": run_id})
-            self._app.call_from_thread(self._app.post_message, RuleCompleted(rule_id, "completed"))
+            self._app.post_message(RuleCompleted(rule_id, "completed"))
 
         except Exception as e:
             log.error("scheduler.run_failed", extra={"rule_id": rule_id, "run_id": run_id, "error": str(e)}, exc_info=True)
             db.finish_run(conn, run_id, "failed")
             self._rules_db.update_last_run(rule_id, "failed")
-            self._app.call_from_thread(self._app.post_message, RuleCompleted(rule_id, "failed"))
+            self._app.post_message(RuleCompleted(rule_id, "failed"))
 
         finally:
             conn.close()

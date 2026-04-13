@@ -1,28 +1,62 @@
 """
-ChatWidget — task input and live ReAct stream.
+Stash prototype — chat widget.
 
-Contains everything visible in the chat column:
-  PaneHeader     — column title + keybind chip
-  MessageBubble  — one streamed message (thought / action / observation / final / error / system)
-  PlanStepRow    — one row in the plan table (blue chip · description · ○/✓)
-  PlanMessage    — full plan card (tool chips + step table), rendered inline in stream
-  ApproveBar     — approve / reject strip shown above input while awaiting approval
-  InputArea      — › prefix + text input
-  ChatWidget     — orchestrates all of the above; public API called by StashApp
+Full flow demo:
+  type a task → plan surfaces → approve/reject → steps stream live
 
-Messages posted upward (handled by StashApp):
-  TaskSubmitted  — user typed a task and hit Enter
-  PlanApproved   — user approved the plan
-  PlanRejected   — user rejected the plan
+Run with:
+    uv run python -m prototype.chat
+    # or from project root:
+    uv run python prototype/chat.py
 """
 
-from textual.app import ComposeResult
-from textual.containers import ScrollableContainer, Vertical
+import asyncio
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path so `prototype.models` is importable
+# when this file is executed directly (python prototype/chat.py).
+_root = Path(__file__).resolve().parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
+from enum import Enum
+
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Button, Input, Label
 
-from stash.core.agent import ReActStep
-from stash.tui.messages import PlanApproved, PlanRejected, TaskSubmitted
+from prototype.models import FAKE_OBSERVATIONS, FAKE_PLAN, ReActStep
+
+
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+
+class RunState(Enum):
+    IDLE              = "idle"
+    PLANNING          = "planning"
+    AWAITING_APPROVAL = "awaiting_approval"
+    RUNNING           = "running"
+
+
+# ---------------------------------------------------------------------------
+# Messages
+# ---------------------------------------------------------------------------
+
+class TaskSubmitted(Message):
+    def __init__(self, task: str) -> None:
+        self.task = task
+        super().__init__()
+
+class PlanApproved(Message):
+    pass
+
+class PlanRejected(Message):
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -30,14 +64,12 @@ from stash.tui.messages import PlanApproved, PlanRejected, TaskSubmitted
 # ---------------------------------------------------------------------------
 
 def _tool_chip(tool: str) -> str:
-    """Green chip — executed action (already run)."""
+    """Green chip — used in the action stream (already executed)."""
     return f"[on #0D2B1A][#3FB950] {tool} [/][/]"
 
-
 def _plan_chip(tool: str) -> str:
-    """Blue chip — proposed action (not yet run)."""
+    """Blue chip — used in the plan table (proposed, not yet run)."""
     return f"[on #0D1F38][#58A6FF] {tool} [/][/]"
-
 
 def _keybind_chip(key: str) -> str:
     return f"[on #21262D][#58A6FF] {key} [/][/]"
@@ -76,7 +108,7 @@ class PaneHeader(Widget):
 # ---------------------------------------------------------------------------
 
 class MessageBubble(Widget):
-    """One message in the stream: label + content card with coloured left border."""
+    """One message in the stream: coloured left border + content card."""
 
     DEFAULT_CSS = """
     MessageBubble {
@@ -88,6 +120,7 @@ class MessageBubble(Widget):
     MessageBubble #msg-header {
         height: 1;
         color: #8B949E;
+        margin-bottom: 0;
     }
     MessageBubble #msg-card {
         height: auto;
@@ -100,7 +133,7 @@ class MessageBubble(Widget):
         color: #C9D1D9;
     }
 
-    /* Left accent per type */
+    /* Left accent per type — on the card */
     MessageBubble.user        #msg-card { border-left: tall #58A6FF; }
     MessageBubble.thought     #msg-card { border-left: tall #8957E5; }
     MessageBubble.action      #msg-card { border-left: tall #3FB950; }
@@ -150,7 +183,7 @@ class MessageBubble(Widget):
 # ---------------------------------------------------------------------------
 
 class PlanStepRow(Widget):
-    """One action step row: number · blue tool chip · description · ○/✓."""
+    """One row in the plan table: number · blue tool chip · description · circle."""
 
     DEFAULT_CSS = """
     PlanStepRow {
@@ -181,7 +214,7 @@ class PlanStepRow(Widget):
 
 
 class PlanMessage(Widget):
-    """Inline plan card: blue tool chips + action step table."""
+    """System message surfacing the plan: blue tool chips + step table."""
 
     DEFAULT_CSS = """
     PlanMessage {
@@ -211,7 +244,7 @@ class PlanMessage(Widget):
     def __init__(self, steps: list[ReActStep]) -> None:
         super().__init__()
         self._action_steps = [s for s in steps if s.type == "action"]
-        self._tools = list(dict.fromkeys(
+        self._tools        = list(dict.fromkeys(
             s.tool for s in self._action_steps if s.tool
         ))
 
@@ -237,7 +270,7 @@ class PlanMessage(Widget):
 # ---------------------------------------------------------------------------
 
 class ApproveBar(Widget):
-    """Approve / reject strip. Hidden until a plan is ready."""
+    """Fixed zone above input. Hidden until a plan is ready."""
 
     DEFAULT_CSS = """
     ApproveBar {
@@ -273,7 +306,7 @@ class ApproveBar(Widget):
         color: #3FB950;
     }
     ApproveBar #btn-approve:hover { background: #133d24; }
-    ApproveBar #btn-reject {
+    ApproveBar #btn-reject  {
         background: #2B0D0D;
         color: #F85149;
     }
@@ -355,18 +388,7 @@ class InputArea(Widget):
 # ---------------------------------------------------------------------------
 
 class ChatWidget(Widget):
-    """
-    Full chat column: header · scrollable stream · approve bar · input.
-
-    Public API (called by StashApp):
-      append_bubble(msg_type, content)  — add a raw bubble to the stream
-      append_step(step)                 — render a ReActStep into the right bubble type
-      show_plan(steps)                  — mount the inline plan card + show approve bar
-      hide_approve_bar()                — hide the approve bar after decision
-      mark_step_done(index)             — tick ✓ on plan step #index
-      append_rejection()                — system bubble: plan rejected
-      set_input_enabled(enabled)        — enable / disable the task input
-    """
+    """Full chat pane: header + message stream + approve bar + input."""
 
     DEFAULT_CSS = """
     ChatWidget {
@@ -382,10 +404,6 @@ class ChatWidget(Widget):
         background: #0E0E0F;
     }
     """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._action_step_idx = 0  # tracks which plan step to tick ✓ next
 
     def compose(self) -> ComposeResult:
         yield PaneHeader("task / chat", "enter")
@@ -405,31 +423,7 @@ class ChatWidget(Widget):
         stream.mount(MessageBubble(msg_type, content))
         stream.scroll_end(animate=False)
 
-    def append_step(self, step: ReActStep) -> None:
-        """Render one ReActStep from the live agent into the stream."""
-        if step.type == "thought":
-            self.append_bubble("thought", step.content)
-
-        elif step.type == "action":
-            args_str = ", ".join(
-                f"{k}={v}" for k, v in (step.args or {}).items()
-            )
-            self.append_bubble("action", f"{step.tool}({args_str})")
-            # Tick the corresponding plan step circle immediately
-            self.mark_step_done(self._action_step_idx)
-            self._action_step_idx += 1
-
-        elif step.type == "observation":
-            self.append_bubble("observation", step.result or step.content)
-
-        elif step.type == "final":
-            self.append_bubble("final", step.content)
-
-        elif step.type == "error":
-            self.append_bubble("error", step.content)
-
     def show_plan(self, steps: list[ReActStep]) -> None:
-        self._action_step_idx = 0  # reset counter for this new plan
         stream = self.query_one("#stream", ScrollableContainer)
         stream.mount(PlanMessage(steps))
         stream.scroll_end(animate=False)
@@ -449,3 +443,122 @@ class ChatWidget(Widget):
 
     def set_input_enabled(self, enabled: bool) -> None:
         self.query_one(InputArea).set_enabled(enabled)
+
+
+# ---------------------------------------------------------------------------
+# Prototype app
+# ---------------------------------------------------------------------------
+
+class ChatProto(App):
+
+    CSS = """
+    Screen {
+        background: #0E0E0F;
+        layout: horizontal;
+    }
+    #chat-col {
+        width: 1fr;
+        height: 100%;
+    }
+    """
+
+    BINDINGS = [
+        Binding("ctrl+c", "quit", "Quit"),
+        Binding("enter",  "approve", "Approve", show=False),
+        Binding("escape", "reject",  "Reject",  show=False),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._state = RunState.IDLE
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="chat-col"):
+            yield ChatWidget()
+
+    # --- keyboard shortcuts for approve/reject ---
+
+    def action_approve(self) -> None:
+        if self._state == RunState.AWAITING_APPROVAL:
+            self.on_plan_approved(PlanApproved())
+
+    def action_reject(self) -> None:
+        if self._state == RunState.AWAITING_APPROVAL:
+            self.on_plan_rejected(PlanRejected())
+
+    # --- task submitted ---
+
+    def on_task_submitted(self, msg: TaskSubmitted) -> None:
+        if self._state != RunState.IDLE:
+            return
+        self._state = RunState.PLANNING
+        chat = self.query_one(ChatWidget)
+        chat.set_input_enabled(False)
+        chat.append_bubble("user", msg.task)
+        chat.append_bubble("system", "planning...")
+        self.run_worker(self._do_plan(), exclusive=True)
+
+    async def _do_plan(self) -> None:
+        await asyncio.sleep(1.5)
+        chat = self.query_one(ChatWidget)
+        chat.append_bubble(
+            "thought",
+            "I need to first list the Downloads directory, identify video files, "
+            "check their names, then move them. I'll use ls to scout first, then mv to act.",
+        )
+        chat.show_plan(FAKE_PLAN)
+        self._state = RunState.AWAITING_APPROVAL
+
+    # --- approve / reject ---
+
+    def on_plan_approved(self, _: PlanApproved) -> None:
+        if self._state != RunState.AWAITING_APPROVAL:
+            return
+        self._state = RunState.RUNNING
+        chat = self.query_one(ChatWidget)
+        chat.hide_approve_bar()
+        self.run_worker(self._do_run(), exclusive=True)
+
+    def on_plan_rejected(self, _: PlanRejected) -> None:
+        if self._state != RunState.AWAITING_APPROVAL:
+            return
+        chat = self.query_one(ChatWidget)
+        chat.hide_approve_bar()
+        chat.append_rejection()
+        chat.set_input_enabled(True)
+        self._state = RunState.IDLE
+
+    # --- execution ---
+
+    async def _do_run(self) -> None:
+        chat    = self.query_one(ChatWidget)
+        obs_idx  = 0
+        step_idx = 0
+
+        for step in FAKE_PLAN:
+            await asyncio.sleep(0.7)
+
+            if step.type == "thought":
+                chat.append_bubble("thought", step.content)
+
+            elif step.type == "action":
+                args_str = ", ".join(
+                    f"{k}={v}" for k, v in (step.args or {}).items()
+                )
+                chat.append_bubble("action", f"{step.tool}({args_str})")
+                await asyncio.sleep(0.5)
+                if obs_idx < len(FAKE_OBSERVATIONS):
+                    chat.append_bubble("observation", FAKE_OBSERVATIONS[obs_idx])
+                    obs_idx += 1
+                chat.mark_step_done(step_idx)
+                step_idx += 1
+
+            elif step.type == "final":
+                chat.append_bubble("final", step.content)
+
+        chat.set_input_enabled(True)
+        self._state = RunState.IDLE
+
+
+if __name__ == "__main__":
+    ChatProto().run()

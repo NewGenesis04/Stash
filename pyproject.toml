@@ -9,4 +9,5 @@ dependencies = [
     "pydantic>=2.12.5",
     "textual>=8.2.3",
     "tinydb>=4.8.2",
+    "tomli-w>=1.2.0",
 ]

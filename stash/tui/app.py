@@ -15,7 +15,6 @@ import sqlite3
 import uuid
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 from textual.app import App, ComposeResult
@@ -28,12 +27,10 @@ from stash.core.registry import SessionRegistry
 from stash.health.ollama import HealthResult, HealthStatus
 from stash.persistence.tinydb import RulesDB
 from stash.scheduler.runner import StashScheduler
+from stash.tui.messages import PlanApproved, PlanRejected, TaskSubmitted
 from stash.tui.screens.main import MainScreen
 import stash.persistence.sqlite as db
 
-if TYPE_CHECKING:
-    from stash.tui.widgets.chat import ChatWidget
-    from stash.tui.widgets.sidebar import Sidebar
 
 log = logging.getLogger(__name__)
 
@@ -64,21 +61,8 @@ class OllamaStatusChanged(Message):
         super().__init__()
 
 
-class TaskSubmitted(Message):
-    """Posted by ChatWidget when the user submits a task."""
-    def __init__(self, task: str) -> None:
-        self.task = task
-        super().__init__()
-
-
-class PlanApproved(Message):
-    """Posted by the approve button / Enter keybinding."""
-    pass
-
-
-class PlanRejected(Message):
-    """Posted by the reject button / Esc keybinding."""
-    pass
+# TaskSubmitted, PlanApproved, PlanRejected are imported from stash.tui.messages
+# (shared with ChatWidget to avoid circular imports).
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +101,7 @@ class StashApp(App):
         Binding("ctrl+n", "new_rule", "New rule"),
         Binding("ctrl+l", "focus_audit_log", "Audit log"),
         Binding("ctrl+r", "focus_rules", "Rules"),
+        Binding("ctrl+o", "change_model", "Change model"),
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
@@ -148,17 +133,25 @@ class StashApp(App):
     # --- lifecycle ---
 
     async def on_mount(self) -> None:
+        from stash.tui.screens.loading import LoadingScreen
+        await self.push_screen(LoadingScreen(self._health_result), self._on_loading_done)
+
+    def _on_loading_done(self, health_result: HealthResult | None) -> None:
         self._scheduler.start()
         self.set_interval(30, self._poll_ollama)
-        await self._poll_ollama()
-        self.query_one("Sidebar").load_rules(self._rules_db.all())
-        if self._health_result is not None and self._health_result.status in (
+        self.screen.query_one("SidebarWidget").load_rules(self._rules_db.all())
+        if health_result is not None and health_result.status in (
             HealthStatus.NO_MODEL_SELECTED,
             HealthStatus.MODEL_MISSING,
         ):
             from stash.tui.screens.model_picker import ModelPickerScreen
-            self.push_screen(ModelPickerScreen(self.config, self._config_path))
-        log.info("app.mounted", extra={"initial_health": self._health_result.status.value if self._health_result else "unknown"})
+            self.push_screen(
+                ModelPickerScreen(health_result.available_models),
+                self._on_model_selected,
+            )
+        log.info("app.mounted", extra={"initial_health": health_result.status.value if health_result else "unknown"})
+        self.call_later(self._poll_ollama)
+        self.call_after_refresh(self._restore_main_focus)
 
     async def on_unmount(self) -> None:
         self._scheduler.stop()
@@ -170,14 +163,12 @@ class StashApp(App):
     async def _poll_ollama(self) -> None:
         from stash.health.ollama import check, HealthStatus, OllamaUnavailableError
         endpoint = self.config.get("ollama", {}).get("host", "http://localhost:11434")
-        model = self.config.get("model")
+        model = self.config.get("ollama", {}).get("model")
         try:
             result = await check(endpoint, model)
             available = result.status == HealthStatus.OK
         except OllamaUnavailableError:
             available = False
-        except NotImplementedError:
-            return  # health check not yet implemented — skip silently
 
         if available != self._ollama_available:
             self._ollama_available = available
@@ -195,6 +186,11 @@ class StashApp(App):
         task = message.task
         run_id = str(uuid.uuid4())
         log.info("app.task_submitted", extra={"run_id": run_id, "task": task})
+
+        chat = self.screen.query_one("ChatWidget")
+        chat.set_input_enabled(False)
+        chat.append_bubble("user", task)
+        chat.append_bubble("system", "planning...")
 
         db.begin_run(self._sqlite_conn, run_id, task)
         db.add_message(self._sqlite_conn, "user", task)
@@ -214,7 +210,7 @@ class StashApp(App):
         self._pending_run = PendingRun(run_id=run_id, agent=agent, registry=registry, task=task)
         self._run_state = RunState.AWAITING_APPROVAL
         log.info("app.plan_ready", extra={"run_id": run_id, "steps": len(steps)})
-        self.query_one("ChatWidget").show_plan(steps)
+        self.screen.query_one("ChatWidget").show_plan(steps)
 
     async def on_plan_approved(self, message: PlanApproved) -> None:
         if self._run_state != RunState.AWAITING_APPROVAL or self._pending_run is None:
@@ -222,6 +218,8 @@ class StashApp(App):
 
         self._run_state = RunState.RUNNING
         pending = self._pending_run
+        chat = self.screen.query_one("ChatWidget")
+        chat.hide_approve_bar()
         log.info("app.plan_approved", extra={"run_id": pending.run_id})
 
         try:
@@ -240,6 +238,7 @@ class StashApp(App):
         finally:
             self._pending_run = None
             self._run_state = RunState.IDLE
+            self.screen.query_one("ChatWidget").set_input_enabled(True)
 
     async def on_plan_rejected(self, message: PlanRejected) -> None:
         if self._run_state != RunState.AWAITING_APPROVAL or self._pending_run is None:
@@ -250,28 +249,74 @@ class StashApp(App):
         log.info("app.plan_rejected", extra={"run_id": run_id})
         self._pending_run = None
         self._run_state = RunState.IDLE
-        self.query_one("ChatWidget").append_rejection()
+        chat = self.screen.query_one("ChatWidget")
+        chat.hide_approve_bar()
+        chat.append_rejection()
+        chat.set_input_enabled(True)
 
     # --- cross-layer message handlers ---
 
     def on_react_step_ready(self, message: ReactStepReady) -> None:
-        self.query_one("ChatWidget").append_step(message.step)
+        self.screen.query_one("ChatWidget").append_step(message.step)
 
     def on_rule_completed(self, message: RuleCompleted) -> None:
         log.info("app.rule_completed", extra={"rule_id": message.rule_id, "status": message.status})
-        self.query_one("Sidebar").update_rule_status(message.rule_id, message.status)
+        self.screen.query_one("SidebarWidget").update_rule_status(message.rule_id, message.status)
 
     def on_ollama_status_changed(self, message: OllamaStatusChanged) -> None:
-        self.query_one("TitleBar").set_ollama_status(message.available)
+        self.screen.query_one("TitleBar").set_ollama_status(message.available)
 
     # --- action handlers ---
 
     def action_new_rule(self) -> None:
         from stash.tui.screens.rule_editor import RuleEditorScreen
-        self.push_screen(RuleEditorScreen())
+        self.push_screen(RuleEditorScreen(), self._on_rule_saved)
+
+    def _on_rule_saved(self, rule) -> None:
+        if not rule:
+            return
+        self._rules_db.upsert(rule)
+        self.screen.query_one("SidebarWidget").load_rules(self._rules_db.all())
+        log.info("app.rule_saved", extra={"rule_id": rule.id, "name": rule.name})
+
+    async def action_change_model(self) -> None:
+        from stash.health.ollama import fetch_models, OllamaUnavailableError
+        from stash.tui.screens.model_picker import ModelPickerScreen
+        endpoint = self.config.get("ollama", {}).get("host", "http://localhost:11434")
+        current  = self.config.get("ollama", {}).get("model", "")
+        try:
+            models = await fetch_models(endpoint)
+        except OllamaUnavailableError:
+            models = []
+        self.push_screen(ModelPickerScreen(models, current=current), self._on_model_selected)
+
+    def _on_model_selected(self, model: str | None) -> None:
+        if not model:
+            return
+        self.config.setdefault("ollama", {})["model"] = model
+        self.screen.query_one("TitleBar").set_model(model)
+        self._save_config()
+        if self._run_state == RunState.IDLE:
+            self.call_after_refresh(self._restore_main_focus)
+
+    def _restore_main_focus(self) -> None:
+        """Re-enable and focus the chat input after any screen transition."""
+        try:
+            self.screen.query_one("ChatWidget").set_input_enabled(True)
+        except Exception:
+            pass
+
+    def _save_config(self) -> None:
+        try:
+            import tomli_w
+            with self._config_path.open("wb") as f:
+                tomli_w.dump(self.config, f)
+            log.info("app.config_saved", extra={"path": str(self._config_path)})
+        except Exception as e:
+            log.warning("app.config_save_failed", extra={"error": str(e)})
 
     def action_focus_audit_log(self) -> None:
-        self.query_one("Sidebar").focus_audit_log()
+        self.screen.query_one("SidebarWidget").focus_audit_log()
 
     def action_focus_rules(self) -> None:
-        self.query_one("Sidebar").focus_rules()
+        self.screen.query_one("SidebarWidget").focus_rules()

@@ -1,17 +1,7 @@
-/* Stash — app-level layout styles */
+/* Stash — app-level styles */
 
-Screen {
-    layout: horizontal;
-}
-
-#left {
-    width: 1fr;
-    height: 100%;
-    padding: 1;
-}
-
-#right {
-    width: 1fr;
-    height: 100%;
-    padding: 1;
+/* Remove default Textual footer styling so ours can take over */
+Footer {
+    background: #161B22;
+    color: #8B949E;
 }
