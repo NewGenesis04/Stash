@@ -394,6 +394,13 @@ class ChatWidget(Widget):
         yield InputArea()
 
     def on_mount(self) -> None:
+        # Sets disabled=False as a safe default, but the focus() call inside
+        # set_enabled is silently discarded by Textual — LoadingScreen is already
+        # the active screen when this fires, and you can't focus a widget on an
+        # inactive screen. The focus the user actually experiences comes from
+        # StashApp._restore_main_focus(), called via call_after_refresh after
+        # LoadingScreen dismisses. This call is kept as a belt-and-suspenders
+        # default in case the startup order ever changes.
         self.query_one(InputArea).set_enabled(True)
 
     # ------------------------------------------------------------------
