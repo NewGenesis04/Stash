@@ -36,22 +36,26 @@ def _keybind_chip(key: str) -> str:
 
 
 def _rule_status(rule: FolderRule) -> str:
-    """Derive display status from rule fields."""
+    """Derive display status from rule fields.
+
+    last_run_status is written by the scheduler as "completed" or "failed".
+    None means the rule has never run since it was created.
+    """
     if not rule.enabled:
         return "paused"
-    if rule.last_run_status == "ok":
-        return "ok"
     if rule.last_run_status is None:
         return "scheduled"
-    return "error"
+    if rule.last_run_status == "completed":
+        return "completed"
+    return "failed"
 
 
 def _status_dot(status: str) -> str:
-    if status == "ok":
+    if status == "completed":
         return "[#3FB950]●[/]"
     elif status == "scheduled":
         return "[#58A6FF]◷[/]"
-    elif status == "error":
+    elif status == "failed":
         return "[#F85149]●[/]"
     else:  # paused
         return "[#8B949E]○[/]"

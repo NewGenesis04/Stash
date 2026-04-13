@@ -81,7 +81,14 @@ def main() -> None:
     from stash.health.ollama import check, OllamaUnavailableError
 
     endpoint = config.get("ollama", {}).get("host", "http://localhost:11434")
-    selected_model = config.get("model")
+
+    # On first run config.toml has no model key — selected_model is None.
+    # check() returns NO_MODEL_SELECTED, which causes LoadingScreen to push
+    # ModelPickerScreen after the splash. Once the user picks a model it is
+    # written to config["ollama"]["model"] and saved back to config.toml.
+    # On subsequent runs the key is present and the picker is not shown.
+    # The picker is also accessible at any time via ctrl+o (action_change_model).
+    selected_model = config.get("ollama", {}).get("model")
 
     try:
         health_result = asyncio.run(check(endpoint, selected_model))

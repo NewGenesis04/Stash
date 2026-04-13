@@ -257,7 +257,10 @@ class StashApp(App):
     # --- cross-layer message handlers ---
 
     def on_react_step_ready(self, message: ReactStepReady) -> None:
-        self.screen.query_one("ChatWidget").append_step(message.step)
+        step = message.step
+        self.screen.query_one("ChatWidget").append_step(step)
+        if step.type == "observation" and step.tool and step.result:
+            self.screen.query_one("SidebarWidget").append_audit_entry(step.tool, step.result)
 
     def on_rule_completed(self, message: RuleCompleted) -> None:
         log.info("app.rule_completed", extra={"rule_id": message.rule_id, "status": message.status})
