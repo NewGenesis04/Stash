@@ -12,6 +12,15 @@ dependencies = [
     "tomli-w>=1.2.0",
 ]
 
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+include = ["stash*"]
+
+[project.scripts]
+stash = "stash.main:main"
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",

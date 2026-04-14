@@ -16,7 +16,7 @@ class SessionRegistry:
     """Immutable, session-scoped view of approved tools."""
 
     def __init__(self, tools: dict[str, Callable]) -> None:
-        self._tools = tools
+        self._tools = dict(tools)  # copy — mutations to the source dict don't affect this session
 
     def call(self, name: str, args: dict) -> str:
         if name not in self._tools:
