@@ -51,13 +51,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS conversations (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            rule_id   TEXT,
-            role      TEXT NOT NULL,
-            content   TEXT NOT NULL,
-            timestamp TEXT NOT NULL
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id    TEXT,
+            session_id TEXT,
+            role       TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            timestamp  TEXT NOT NULL
         );
     """)
+    # Migrate existing DBs that predate the session_id column.
+    try:
+        conn.execute("ALTER TABLE conversations ADD COLUMN session_id TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
 
 
@@ -99,19 +106,38 @@ def log_step(conn: sqlite3.Connection, run_id: str, step: ReActStep) -> None:
     log.debug("sqlite.log_step", extra={"run_id": run_id, "step_type": step.type, "tool": step.tool})
 
 
-def add_message(conn: sqlite3.Connection, role: str, content: str, rule_id: str | None = None) -> None:
+def add_message(
+    conn: sqlite3.Connection,
+    role: str,
+    content: str,
+    rule_id: str | None = None,
+    session_id: str | None = None,
+) -> None:
     conn.execute(
-        "INSERT INTO conversations (rule_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-        (rule_id, role, content, datetime.now(UTC).isoformat()),
+        "INSERT INTO conversations (rule_id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
+        (rule_id, session_id, role, content, datetime.now(UTC).isoformat()),
     )
     conn.commit()
-    log.debug("sqlite.add_message", extra={"rule_id": rule_id, "role": role})
+    log.debug("sqlite.add_message", extra={"rule_id": rule_id, "session_id": session_id, "role": role})
 
 
-def get_history(conn: sqlite3.Connection, rule_id: str | None = None, limit: int = 20) -> list[dict]:
-    rows = conn.execute(
-        "SELECT role, content FROM conversations WHERE rule_id IS ? ORDER BY id DESC LIMIT ?",
-        (rule_id, limit),
-    ).fetchall()
-    log.debug("sqlite.get_history", extra={"rule_id": rule_id, "limit": limit, "returned": len(rows)})
+def get_history(
+    conn: sqlite3.Connection,
+    rule_id: str | None = None,
+    session_id: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    if rule_id is not None:
+        # Rule-scoped: return all history for this rule across all sessions.
+        rows = conn.execute(
+            "SELECT role, content FROM conversations WHERE rule_id = ? ORDER BY id DESC LIMIT ?",
+            (rule_id, limit),
+        ).fetchall()
+    else:
+        # Chat: scoped to the current session only.
+        rows = conn.execute(
+            "SELECT role, content FROM conversations WHERE rule_id IS NULL AND session_id IS ? ORDER BY id DESC LIMIT ?",
+            (session_id, limit),
+        ).fetchall()
+    log.debug("sqlite.get_history", extra={"rule_id": rule_id, "session_id": session_id, "limit": limit, "returned": len(rows)})
     return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]

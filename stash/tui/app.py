@@ -193,7 +193,7 @@ class StashApp(App):
         chat.append_bubble("system", "planning...")
 
         db.begin_run(self._sqlite_conn, run_id, task)
-        db.add_message(self._sqlite_conn, "user", task)
+        db.add_message(self._sqlite_conn, "user", task, session_id=self.config.get("_session_id"))
 
         callbacks = [AuditLogger(self._sqlite_conn, run_id), TUIUpdater(self)]
         agent, registry = self._agent_factory.build(self._sqlite_conn, callbacks)
@@ -227,9 +227,9 @@ class StashApp(App):
             steps = await loop.run_in_executor(
                 None, pending.agent.run, pending.task, pending.registry, pending.run_id
             )
-            final = next((s for s in steps if s.type == "final"), None)
-            if final:
-                db.add_message(self._sqlite_conn, "assistant", final.content)
+            response = next((s for s in steps if s.type == "response"), None)
+            if response:
+                db.add_message(self._sqlite_conn, "assistant", response.content, session_id=self.config.get("_session_id"))
             db.finish_run(self._sqlite_conn, pending.run_id, "completed")
             log.info("app.run_complete", extra={"run_id": pending.run_id})
         except Exception as e:
@@ -312,8 +312,9 @@ class StashApp(App):
     def _save_config(self) -> None:
         try:
             import tomli_w
+            saveable = {k: v for k, v in self.config.items() if not k.startswith("_")}
             with self._config_path.open("wb") as f:
-                tomli_w.dump(self.config, f)
+                tomli_w.dump(saveable, f)
             log.info("app.config_saved", extra={"path": str(self._config_path)})
         except Exception as e:
             log.warning("app.config_save_failed", extra={"error": str(e)})

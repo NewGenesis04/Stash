@@ -3,7 +3,7 @@ ChatWidget — task input and live ReAct stream.
 
 Contains everything visible in the chat column:
   PaneHeader     — column title + keybind chip
-  MessageBubble  — one streamed message (thought / action / observation / final / error / system)
+  MessageBubble  — one streamed message (thought / action / observation / response / error / system)
   PlanStepRow    — one row in the plan table (blue chip · description · ○/✓)
   PlanMessage    — full plan card (tool chips + step table), rendered inline in stream
   ApproveBar     — approve / reject strip shown above input while awaiting approval
@@ -105,7 +105,7 @@ class MessageBubble(Widget):
     MessageBubble.thought     #msg-card { border-left: tall #8957E5; }
     MessageBubble.action      #msg-card { border-left: tall #3FB950; }
     MessageBubble.observation #msg-card { border-left: tall #D29922; }
-    MessageBubble.final       #msg-card { border-left: tall #58A6FF; }
+    MessageBubble.response       #msg-card { border-left: tall #58A6FF; }
     MessageBubble.error       #msg-card { border-left: tall #F85149; }
     MessageBubble.system      #msg-card { border-left: tall #30363D; }
 
@@ -114,7 +114,7 @@ class MessageBubble(Widget):
     MessageBubble.thought     #msg-header { color: #8957E5; }
     MessageBubble.action      #msg-header { color: #3FB950; }
     MessageBubble.observation #msg-header { color: #D29922; }
-    MessageBubble.final       #msg-header { color: #58A6FF; }
+    MessageBubble.response       #msg-header { color: #58A6FF; }
     MessageBubble.error       #msg-header { color: #F85149; }
 
     /* Content style per type */
@@ -127,7 +127,7 @@ class MessageBubble(Widget):
         "thought":     "stash — thinking",
         "action":      "stash — executing",
         "observation": "stash — observed",
-        "final":       "stash — done",
+        "response":       "stash — response",
         "error":       "stash — error",
         "system":      "",
     }
@@ -429,8 +429,8 @@ class ChatWidget(Widget):
         elif step.type == "observation":
             self.append_bubble("observation", step.result or step.content)
 
-        elif step.type == "final":
-            self.append_bubble("final", step.content)
+        elif step.type == "response":
+            self.append_bubble("response", step.content)
 
         elif step.type == "error":
             self.append_bubble("error", step.content)

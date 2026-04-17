@@ -21,6 +21,7 @@ import logging
 import sys
 import tomllib
 import tomli_w
+import uuid
 from pathlib import Path
 
 from stash.log import setup_logging
@@ -69,6 +70,13 @@ def main() -> None:
 
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    preferences_path = data_dir / "preferences.md"
+    if not preferences_path.exists():
+        preferences_path.write_text("", encoding="utf-8")
+
+    config["_preferences_path"] = str(preferences_path)
+    config["_session_id"] = str(uuid.uuid4())
+
     # --- persistence ---
     import stash.persistence.sqlite as db
     from stash.persistence.tinydb import RulesDB
@@ -109,9 +117,9 @@ def main() -> None:
     from stash.core.registry import ToolRegistry
     from stash.scheduler.runner import StashScheduler
     from stash.tui.app import StashApp
-    from stash.tools import ALL_TOOLS, ALL_SCHEMAS
+    from stash.tools import ALL_TOOLS, ALL_SCHEMAS, ALL_VALIDATORS
 
-    tool_registry = ToolRegistry(ALL_TOOLS)
+    tool_registry = ToolRegistry(ALL_TOOLS, ALL_VALIDATORS)
     agent_factory = AgentFactory(config, tool_registry, ALL_SCHEMAS)
     scheduler = StashScheduler(rules_db, tool_registry, ALL_SCHEMAS)
 

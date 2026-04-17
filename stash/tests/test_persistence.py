@@ -113,47 +113,56 @@ class TestSQLiteSteps:
         db.begin_run(conn, "run-1", "task")
         db.log_step(conn, "run-1", ReActStep(type="thought", content="step 1"))
         db.log_step(conn, "run-1", ReActStep(type="action", content="ls", tool="ls", args={}))
-        db.log_step(conn, "run-1", ReActStep(type="final", content="done"))
+        db.log_step(conn, "run-1", ReActStep(type="response", content="done"))
         rows = conn.execute(
             "SELECT step_type FROM react_steps WHERE run_id = 'run-1' ORDER BY id"
         ).fetchall()
         types = [r["step_type"] for r in rows]
-        assert types == ["thought", "action", "final"]
+        assert types == ["thought", "action", "response"]
 
 
 # ---------------------------------------------------------------------------
 # SQLite — conversations
 # ---------------------------------------------------------------------------
 
+SESSION = "test-session-abc"
+
 class TestSQLiteConversations:
     def test_add_and_retrieve_message(self, conn):
-        db.add_message(conn, "user", "sort my downloads")
-        history = db.get_history(conn)
+        db.add_message(conn, "user", "sort my downloads", session_id=SESSION)
+        history = db.get_history(conn, session_id=SESSION)
         assert len(history) == 1
         assert history[0]["role"] == "user"
         assert history[0]["content"] == "sort my downloads"
 
     def test_history_returned_in_chronological_order(self, conn):
-        db.add_message(conn, "user", "first")
-        db.add_message(conn, "assistant", "second")
-        db.add_message(conn, "user", "third")
-        history = db.get_history(conn)
+        db.add_message(conn, "user", "first", session_id=SESSION)
+        db.add_message(conn, "assistant", "second", session_id=SESSION)
+        db.add_message(conn, "user", "third", session_id=SESSION)
+        history = db.get_history(conn, session_id=SESSION)
         assert [h["content"] for h in history] == ["first", "second", "third"]
 
     def test_history_scoped_by_rule_id(self, conn):
         db.add_message(conn, "user", "rule msg", rule_id="rule-1")
-        db.add_message(conn, "user", "general msg", rule_id=None)
+        db.add_message(conn, "user", "general msg", session_id=SESSION)
         rule_history = db.get_history(conn, rule_id="rule-1")
-        general_history = db.get_history(conn, rule_id=None)
+        chat_history = db.get_history(conn, session_id=SESSION)
         assert len(rule_history) == 1
         assert rule_history[0]["content"] == "rule msg"
-        assert len(general_history) == 1
-        assert general_history[0]["content"] == "general msg"
+        assert len(chat_history) == 1
+        assert chat_history[0]["content"] == "general msg"
+
+    def test_chat_history_isolated_between_sessions(self, conn):
+        db.add_message(conn, "user", "session A msg", session_id="session-a")
+        db.add_message(conn, "user", "session B msg", session_id="session-b")
+        assert db.get_history(conn, session_id="session-a")[0]["content"] == "session A msg"
+        assert db.get_history(conn, session_id="session-b")[0]["content"] == "session B msg"
+        assert len(db.get_history(conn, session_id="session-a")) == 1
 
     def test_history_limit(self, conn):
         for i in range(10):
-            db.add_message(conn, "user", f"msg {i}")
-        history = db.get_history(conn, limit=3)
+            db.add_message(conn, "user", f"msg {i}", session_id=SESSION)
+        history = db.get_history(conn, session_id=SESSION, limit=3)
         assert len(history) == 3
         # should be the most recent 3, in chronological order
         assert history[-1]["content"] == "msg 9"

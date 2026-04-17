@@ -64,12 +64,12 @@ _PLAN_STEPS = [
     ReActStep(type="thought", content="I will check the files"),
     ReActStep(type="action", content="ls", tool="ls", args={"path": "/tmp"}),
     ReActStep(type="observation", content="file.txt", tool="ls", args={"path": "/tmp"}, result="file.txt"),
-    ReActStep(type="final", content="Found file.txt"),
+    ReActStep(type="response", content="Found file.txt"),
 ]
 
 _RUN_STEPS = [
     ReActStep(type="thought", content="Executing"),
-    ReActStep(type="final", content="Done."),
+    ReActStep(type="response", content="Done."),
 ]
 
 

@@ -2,11 +2,10 @@
 Agent core — pure, stateless ReAct loop.
 
 Each run is independent: takes a task + session registry + callbacks,
-runs Thought → Action → Observation until a final answer is reached,
+runs tool calls until the model responds without calling a tool,
 and returns the full step log.
 """
 
-import json
 import logging
 import sqlite3
 import uuid
@@ -18,76 +17,22 @@ from pydantic import BaseModel, Field
 
 from stash.core.registry import SessionRegistry, ToolRegistry, UnauthorisedToolError
 from stash.core.callbacks import Callback
+from stash.prompts.prompt import build_system_prompt
 
 log = logging.getLogger(__name__)
 
-_REACT_FORMAT = """
-Use ONLY the following format — no deviations:
 
-Thought: <your reasoning>
-Action: <tool name>
-Action Input: <valid JSON object matching the tool's args>
-
-When you have finished the task, use:
-
-Thought: <your reasoning>
-Final Answer: <summary of what was done>
-
-Rules:
-- Only call tools that are listed below.
-- Action Input must be a valid JSON object.
-- Never invent tool names.
-- One action per response.
-""".strip()
-
-
-def _build_system_prompt(registry: SessionRegistry, tools: list[dict]) -> str:
-    available = {t["name"]: t for t in tools if t["name"] in registry.available}
-    tool_lines = "\n".join(
-        f"- {t['name']}: {t['description']}"
-        for t in available.values()
-    )
-    return f"You are Stash, a local file organisation agent.\n\n{_REACT_FORMAT}\n\nAvailable tools:\n{tool_lines}"
-
-
-def _parse_response(text: str) -> tuple[str, str | None, dict | None, str | None]:
-    """
-    Parse a model response into (thought, action, action_input, final_answer).
-    Returns (thought, None, None, final_answer) or (thought, action, args, None).
-    Raises ValueError if the response is malformed.
-    """
-    thought = action = action_input_raw = final_answer = None
-
-    for line in text.splitlines():
-        match line.strip().split(":", 1):
-            case ["Thought", value]:
-                thought = value.strip()
-            case ["Action Input", value]:
-                action_input_raw = value.strip()
-            case ["Action", value]:
-                action = value.strip()
-            case ["Final Answer", value]:
-                final_answer = value.strip()
-
-    if thought is None:
-        raise ValueError(f"no Thought in response: {text!r}")
-
-    if final_answer is not None:
-        return thought, None, None, final_answer
-
-    if action is None:
-        raise ValueError(f"no Action or Final Answer in response: {text!r}")
-
-    try:
-        args = json.loads(action_input_raw or "{}")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Action Input is not valid JSON: {action_input_raw!r}") from e
-
-    return thought, action, args, None
+def _ollama_tools(schemas: list[dict], available: list[str]) -> list[dict]:
+    """Return Ollama-compatible tool schemas, filtered to the approved tool list."""
+    return [
+        {"type": t["type"], "function": t["function"]}
+        for t in schemas
+        if t.get("function", {}).get("name") in available
+    ]
 
 
 class ReActStep(BaseModel):
-    type: Literal["thought", "action", "observation", "final", "error"]
+    type: Literal["thought", "action", "observation", "response", "error"]
     content: str
     tool: str | None = None
     args: dict | None = None
@@ -125,62 +70,68 @@ class Agent:
 
         log.info("agent.run_start", extra={**ctx, "task": task, "tools": registry.available})
 
-        system = _build_system_prompt(registry, self.tools)
-        messages = [{"role": "system", "content": system}]
+        tools = _ollama_tools(self.tools, registry.available)
+        preferences = self._load_preferences()
+        messages = [{"role": "system", "content": build_system_prompt(preferences)}]
 
         if not dry_run:
-            messages.extend(self._load_history())
+            messages.extend(self._load_session_history())
 
         messages.append({"role": "user", "content": task})
 
         steps: list[ReActStep] = []
 
         for step_num in range(self._max_steps):
-            response = self._client.chat(model=self._model, messages=messages)
-            text = response["message"]["content"]
+            response = self._client.chat(model=self._model, messages=messages, tools=tools)
+            message = response["message"]
+            content = (message.get("content") or "").strip()
+            tool_calls = message.get("tool_calls") or []
 
-            try:
-                thought, action, args, final_answer = _parse_response(text)
-            except ValueError as e:
-                log.error("agent.parse_error", extra={**ctx, "step": step_num, "reason": str(e), "raw": text})
-                steps.append(ReActStep(type="error", content=str(e)))
+            if content and tool_calls:
+                log.info("agent.thought", extra={**ctx, "step": step_num, "thought": content})
+                steps.append(ReActStep(type="thought", content=content))
+
+            if not tool_calls:
+                log.info("agent.response", extra={**ctx, "step": step_num, "content": content})
+                steps.append(ReActStep(type="response", content=content))
                 break
 
-            log.info("agent.thought", extra={**ctx, "step": step_num, "thought": thought})
-            steps.append(ReActStep(type="thought", content=thought))
+            messages.append(message)
 
-            if final_answer is not None:
-                log.info("agent.final", extra={**ctx, "step": step_num, "answer": final_answer})
-                steps.append(ReActStep(type="final", content=final_answer))
-                break
+            for tool_call in tool_calls:
+                fn_name = tool_call["function"]["name"]
+                fn_args = tool_call["function"]["arguments"]
 
-            log.info("agent.action", extra={**ctx, "step": step_num, "tool": action, "args": args})
-            steps.append(ReActStep(type="action", content=action, tool=action, args=args))
-            messages.append({"role": "assistant", "content": text})
+                log.info("agent.action", extra={**ctx, "step": step_num, "tool": fn_name, "args": fn_args})
+                steps.append(ReActStep(type="action", content=fn_name, tool=fn_name, args=fn_args))
 
-            tool_schema = next((t for t in self.tools if t["name"] == action), None)
-            is_readonly = tool_schema.get("readonly", False) if tool_schema else False
+                tool_schema = next((t for t in self.tools if t.get("function", {}).get("name") == fn_name), None)
+                is_readonly = tool_schema.get("readonly", False) if tool_schema else False
 
-            if dry_run and not is_readonly:
-                observation = "[plan mode — not executed]"
-                log.debug("agent.observation_skipped", extra={**ctx, "step": step_num, "tool": action})
-            else:
-                try:
-                    observation = self._call_tool(action, args, registry)
-                    log.info("agent.observation", extra={**ctx, "step": step_num, "tool": action, "result": observation})
-                except UnauthorisedToolError as e:
-                    log.error("agent.unauthorised_tool", extra={**ctx, "step": step_num, "tool": action, "reason": str(e)})
-                    steps.append(ReActStep(type="error", content=str(e)))
-                    break
+                if dry_run and not is_readonly:
+                    observation = "[plan mode — not executed]"
+                    log.debug("agent.observation_skipped", extra={**ctx, "step": step_num, "tool": fn_name})
+                else:
+                    try:
+                        observation = self._call_tool(fn_name, fn_args, registry)
+                        log.info("agent.observation", extra={**ctx, "step": step_num, "tool": fn_name, "result": observation})
+                    except UnauthorisedToolError as e:
+                        log.error("agent.unauthorised_tool", extra={**ctx, "step": step_num, "tool": fn_name, "reason": str(e)})
+                        steps.append(ReActStep(type="error", content=str(e)))
+                        return steps
 
-            steps.append(ReActStep(
-                type="observation",
-                content=observation,
-                tool=action,
-                args=args,
-                result=observation,
-            ))
-            messages.append({"role": "user", "content": f"Observation: {observation}"})
+                steps.append(ReActStep(
+                    type="observation",
+                    content=observation,
+                    tool=fn_name,
+                    args=fn_args,
+                    result=observation,
+                ))
+                messages.append({
+                    "role": "tool",
+                    "content": observation,
+                    "name": fn_name,
+                })
 
         else:
             msg = f"max_steps ({self._max_steps}) reached without Final Answer"
@@ -205,13 +156,24 @@ class Agent:
                 cb.on_error(tool, args, e)
             return f"error: {e}"
 
-    def _load_history(self) -> list[dict]:
+    def _load_preferences(self) -> str | None:
+        path = self.config.get("_preferences_path")
+        if not path:
+            return None
+        from pathlib import Path
+        content = Path(path).read_text(encoding="utf-8").strip()
+        return content or None
+
+    def _load_session_history(self) -> list[dict]:
         import stash.persistence.sqlite as db
         conn = self.config.get("_db_conn")
-        rule_id = self.config.get("_rule_id")
         if conn is None:
             return []
-        return db.get_history(conn, rule_id=rule_id)
+        return db.get_history(
+            conn,
+            rule_id=self.config.get("_rule_id"),
+            session_id=self.config.get("_session_id"),
+        )
 
 
 class AgentFactory:
