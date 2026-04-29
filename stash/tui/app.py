@@ -127,14 +127,13 @@ class StashApp(App):
         self._pending_run: PendingRun | None = None
         self._ollama_available: bool | None = None  # None = unknown, not yet polled
 
-    def compose(self) -> ComposeResult:
-        yield MainScreen()
-
     # --- lifecycle ---
 
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
         from stash.tui.screens.loading import LoadingScreen
-        await self.push_screen(LoadingScreen(self._health_result), self._on_loading_done)
+        model = self.config.get("ollama", {}).get("model", "")
+        self.push_screen(MainScreen(model=model))
+        self.push_screen(LoadingScreen(self._health_result), self._on_loading_done)
 
     def _on_loading_done(self, health_result: HealthResult | None) -> None:
         self._scheduler.start()
@@ -190,10 +189,9 @@ class StashApp(App):
         chat = self.screen.query_one("ChatWidget")
         chat.set_input_enabled(False)
         chat.append_bubble("user", task)
-        chat.append_bubble("system", "planning...")
+        chat.append_bubble("system", "planning...", bubble_id="planning-bubble")
 
         db.begin_run(self._sqlite_conn, run_id, task)
-        db.add_message(self._sqlite_conn, "user", task, session_id=self.config.get("_session_id"))
 
         callbacks = [AuditLogger(self._sqlite_conn, run_id), TUIUpdater(self)]
         agent, registry = self._agent_factory.build(self._sqlite_conn, callbacks)
@@ -204,6 +202,25 @@ class StashApp(App):
         except Exception as e:
             log.error("app.plan_failed", extra={"run_id": run_id, "error": str(e)}, exc_info=True)
             db.finish_run(self._sqlite_conn, run_id, "failed")
+            self._run_state = RunState.IDLE
+            chat.remove_planning_bubble()
+            chat.append_bubble("error", f"Planning failed: {e}")
+            chat.set_input_enabled(True)
+            return
+
+        db.add_message(self._sqlite_conn, "user", task, session_id=self.config.get("_session_id"))
+
+        has_actions = any(s.type == "action" for s in steps)
+        if not has_actions:
+            chat = self.screen.query_one("ChatWidget")
+            chat.remove_planning_bubble()
+            for step in steps:
+                chat.append_step(step)
+            chat.set_input_enabled(True)
+            response_step = next((s for s in steps if s.type == "response"), None)
+            if response_step:
+                db.add_message(self._sqlite_conn, "assistant", response_step.content, session_id=self.config.get("_session_id"))
+            db.finish_run(self._sqlite_conn, run_id, "completed")
             self._run_state = RunState.IDLE
             return
 
@@ -267,7 +284,11 @@ class StashApp(App):
         self.screen.query_one("SidebarWidget").update_rule_status(message.rule_id, message.status)
 
     def on_ollama_status_changed(self, message: OllamaStatusChanged) -> None:
-        self.screen.query_one("TitleBar").set_ollama_status(message.available)
+        from stash.tui.screens.main import MainScreen
+        for screen in self.screen_stack:
+            if isinstance(screen, MainScreen):
+                screen.query_one("TitleBar").set_ollama_status(message.available)
+                break
 
     # --- action handlers ---
 
@@ -297,8 +318,18 @@ class StashApp(App):
         if not model:
             return
         self.config.setdefault("ollama", {})["model"] = model
-        self.screen.query_one("TitleBar").set_model(model)
         self._save_config()
+        # Defer TitleBar update — this callback fires before pop_screen(),
+        # so self.screen is still ModelPickerScreen at this point.
+        # call_later runs after all pending messages (including pop_screen) are processed.
+        self.call_later(self._apply_model_to_ui, model)
+
+    def _apply_model_to_ui(self, model: str) -> None:
+        from stash.tui.screens.main import MainScreen
+        for screen in self.screen_stack:
+            if isinstance(screen, MainScreen):
+                screen.query_one("TitleBar").set_model(model)
+                break
         if self._run_state == RunState.IDLE:
             self.call_after_refresh(self._restore_main_focus)
 

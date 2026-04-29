@@ -1,8 +1,6 @@
 [ollama]
 endpoint = "http://localhost:11434"
-# model is set on first run via the TUI model picker and saved here automatically.
-# To reset, delete this line and restart.
-# model = ""
+model = "qwen2.5:1.5b"
 
 [data]
 dir = "~/.stash"

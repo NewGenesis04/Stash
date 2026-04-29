@@ -105,7 +105,7 @@ class MessageBubble(Widget):
     MessageBubble.thought     #msg-card { border-left: tall #8957E5; }
     MessageBubble.action      #msg-card { border-left: tall #3FB950; }
     MessageBubble.observation #msg-card { border-left: tall #D29922; }
-    MessageBubble.response       #msg-card { border-left: tall #58A6FF; }
+    MessageBubble.response       #msg-card { border-left: tall #FF7B72; }
     MessageBubble.error       #msg-card { border-left: tall #F85149; }
     MessageBubble.system      #msg-card { border-left: tall #30363D; }
 
@@ -114,7 +114,7 @@ class MessageBubble(Widget):
     MessageBubble.thought     #msg-header { color: #8957E5; }
     MessageBubble.action      #msg-header { color: #3FB950; }
     MessageBubble.observation #msg-header { color: #D29922; }
-    MessageBubble.response       #msg-header { color: #58A6FF; }
+    MessageBubble.response       #msg-header { color: #FF7B72; }
     MessageBubble.error       #msg-header { color: #F85149; }
 
     /* Content style per type */
@@ -132,8 +132,8 @@ class MessageBubble(Widget):
         "system":      "",
     }
 
-    def __init__(self, msg_type: str, content: str) -> None:
-        super().__init__(classes=msg_type)
+    def __init__(self, msg_type: str, content: str, **kwargs) -> None:
+        super().__init__(classes=msg_type, **kwargs)
         self._msg_type = msg_type
         self._content  = content
 
@@ -407,10 +407,17 @@ class ChatWidget(Widget):
     # Public API
     # ------------------------------------------------------------------
 
-    def append_bubble(self, msg_type: str, content: str) -> None:
+    def append_bubble(self, msg_type: str, content: str, bubble_id: str | None = None) -> None:
         stream = self.query_one("#stream", ScrollableContainer)
-        stream.mount(MessageBubble(msg_type, content))
+        kwargs = {"id": bubble_id} if bubble_id else {}
+        stream.mount(MessageBubble(msg_type, content, **kwargs))
         stream.scroll_end(animate=False)
+
+    def remove_planning_bubble(self) -> None:
+        try:
+            self.query_one("#planning-bubble").remove()
+        except Exception:
+            pass
 
     def append_step(self, step: ReActStep) -> None:
         """Render one ReActStep from the live agent into the stream."""
@@ -436,7 +443,8 @@ class ChatWidget(Widget):
             self.append_bubble("error", step.content)
 
     def show_plan(self, steps: list[ReActStep]) -> None:
-        self._action_step_idx = 0  # reset counter for this new plan
+        self._action_step_idx = 0
+        self.remove_planning_bubble()
         stream = self.query_one("#stream", ScrollableContainer)
         stream.mount(PlanMessage(steps))
         stream.scroll_end(animate=False)

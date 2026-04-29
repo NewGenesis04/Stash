@@ -48,7 +48,7 @@ class Agent:
         self.callbacks = callbacks
         self.tools = tools  # list of SCHEMA dicts from each tool module
         ollama_config = config.get("ollama", {})
-        self._client = ollama.Client(host=ollama_config.get("endpoint", "http://localhost:11434"))
+        self._client = ollama.Client(host=ollama_config.get("host", "http://localhost:11434"))
         self._model = ollama_config.get("model")
         if not self._model:
             raise ValueError("No model selected. Launch the app and pick a model first.")
@@ -73,10 +73,7 @@ class Agent:
         tools = _ollama_tools(self.tools, registry.available)
         preferences = self._load_preferences()
         messages = [{"role": "system", "content": build_system_prompt(preferences)}]
-
-        if not dry_run:
-            messages.extend(self._load_session_history())
-
+        messages.extend(self._load_session_history())
         messages.append({"role": "user", "content": task})
 
         steps: list[ReActStep] = []

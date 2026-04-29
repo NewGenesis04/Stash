@@ -257,4 +257,6 @@ class LoadingScreen(Screen[HealthResult | None]):
             yield Label("KERNEL_BOOT: OK  IO_PORT: 8080", id="corner-br")
 
     def on_mount(self) -> None:
-        self.set_timer(5.0, lambda: self.dismiss(self._health_result))
+        def _dismiss() -> None:
+            self.dismiss(self._health_result)
+        self.set_timer(5.0, _dismiss)
