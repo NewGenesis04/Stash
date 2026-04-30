@@ -79,10 +79,11 @@ def main() -> None:
 
     # --- persistence ---
     import stash.persistence.sqlite as db
-    from stash.persistence.tinydb import RulesDB
+    from stash.persistence.tinydb import LocationsDB, RulesDB
 
     sqlite_conn = db.connect(data_dir / "stash.db")
     rules_db = RulesDB(data_dir / "rules.json")
+    locations_db = LocationsDB(data_dir / "locations.json")
     log.info("stash.persistence_ready")
 
     # --- health check ---
@@ -118,20 +119,36 @@ def main() -> None:
     from stash.scheduler.runner import StashScheduler
     from stash.tui.app import StashApp
     from stash.tools import ALL_TOOLS, ALL_SCHEMAS, ALL_VALIDATORS
+    from stash.tools.resolve_location import make_resolve_location_tool, SCHEMA as RL_SCHEMA, ResolveLocationArgs
 
-    tool_registry = ToolRegistry(ALL_TOOLS, ALL_VALIDATORS)
-    agent_factory = AgentFactory(config, tool_registry, ALL_SCHEMAS)
-    scheduler = StashScheduler(rules_db, tool_registry, ALL_SCHEMAS)
+    # resolve_location is wired after app creation so its picker callback can reference the app.
+    # A mutable cell lets us bind the callback without a forward reference.
+    _picker_cell: list = [None]
+
+    def _request_picker(name: str) -> str | None:
+        return _picker_cell[0](name) if _picker_cell[0] else None
+
+    resolve_location = make_resolve_location_tool(locations_db, _request_picker)
+
+    all_tools = {**ALL_TOOLS, "resolve_location": resolve_location}
+    all_schemas = ALL_SCHEMAS + [RL_SCHEMA]
+    all_validators = {**ALL_VALIDATORS, "resolve_location": ResolveLocationArgs}
+
+    tool_registry = ToolRegistry(all_tools, all_validators)
+    agent_factory = AgentFactory(config, tool_registry, all_schemas)
+    scheduler = StashScheduler(rules_db, tool_registry, all_schemas)
 
     app = StashApp(
         config=config,
         config_path=config_path,
         scheduler=scheduler,
         rules_db=rules_db,
+        locations_db=locations_db,
         sqlite_conn=sqlite_conn,
         agent_factory=agent_factory,
         health_result=health_result,
     )
+    _picker_cell[0] = app.request_location
     scheduler.set_app(app)
 
     log.info("stash.launching")

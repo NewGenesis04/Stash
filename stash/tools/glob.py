@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 class GlobArgs(BaseModel):
     pattern: str
-    base_path: str = "."
+    base_path: str = "~"
 
 
 SCHEMA = {
@@ -23,7 +23,7 @@ SCHEMA = {
 }
 
 
-def glob_tool(pattern: str, base_path: str = ".") -> str:
+def glob_tool(pattern: str, base_path: str = "~") -> str:
     """
     Find files and directories matching a glob pattern.
 
@@ -34,7 +34,7 @@ def glob_tool(pattern: str, base_path: str = ".") -> str:
         pattern:   Glob pattern to match against, e.g. "*.txt", "**/*.pdf",
                    "invoices_2024_*".
         base_path: Absolute path of the directory to search from.
-                   Defaults to the current working directory.
+                   Defaults to the user's home directory.
 
     Returns:
         Newline-separated list of absolute paths for all matches, sorted
@@ -42,7 +42,7 @@ def glob_tool(pattern: str, base_path: str = ".") -> str:
         Returns "(no matches)" if the pattern matched nothing.
         Returns an error string if base_path does not exist.
     """
-    base = Path(base_path)
+    base = Path(base_path).expanduser()
     if not base.exists():
         return f"error: base_path does not exist: {base_path}"
     matches = sorted(base.glob(pattern))

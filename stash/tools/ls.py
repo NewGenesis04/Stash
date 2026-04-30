@@ -35,7 +35,7 @@ def ls_tool(path: str) -> str:
         Returns "(empty)" if the directory exists but contains no entries.
         Returns an error string if the path does not exist or is not a directory.
     """
-    p = Path(path)
+    p = Path(path).expanduser()
     if not p.exists():
         return f"error: path does not exist: {path}"
     if not p.is_dir():

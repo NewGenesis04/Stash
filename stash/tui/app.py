@@ -12,12 +12,13 @@ State machine:
 import asyncio
 import logging
 import sqlite3
+import threading
 import uuid
 from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
-from textual.app import App, ComposeResult
+from textual.app import App
 from textual.binding import Binding
 from textual.message import Message
 
@@ -25,7 +26,7 @@ from stash.core.agent import Agent, AgentFactory, ReActStep
 from stash.core.callbacks import AuditLogger, TUIUpdater
 from stash.core.registry import SessionRegistry
 from stash.health.ollama import HealthResult, HealthStatus
-from stash.persistence.tinydb import RulesDB
+from stash.persistence.tinydb import LocationsDB, RulesDB
 from stash.scheduler.runner import StashScheduler
 from stash.tui.messages import PlanApproved, PlanRejected, TaskSubmitted
 from stash.tui.screens.main import MainScreen
@@ -102,6 +103,7 @@ class StashApp(App):
         Binding("ctrl+l", "focus_audit_log", "Audit log"),
         Binding("ctrl+r", "focus_rules", "Rules"),
         Binding("ctrl+o", "change_model", "Change model"),
+        Binding("ctrl+p", "open_locations", "Locations"),
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
@@ -111,6 +113,7 @@ class StashApp(App):
         config_path: Path,
         scheduler: StashScheduler,
         rules_db: RulesDB,
+        locations_db: LocationsDB,
         sqlite_conn: sqlite3.Connection,
         agent_factory: AgentFactory,
         health_result: HealthResult | None = None,
@@ -120,6 +123,7 @@ class StashApp(App):
         self._config_path = config_path
         self._scheduler = scheduler
         self._rules_db = rules_db
+        self._locations_db = locations_db
         self._sqlite_conn = sqlite_conn
         self._agent_factory = agent_factory
         self._health_result = health_result
@@ -355,3 +359,30 @@ class StashApp(App):
 
     def action_focus_rules(self) -> None:
         self.screen.query_one("SidebarWidget").focus_rules()
+
+    def action_open_locations(self) -> None:
+        from stash.tui.screens.location_registry import LocationRegistryScreen
+        self.push_screen(LocationRegistryScreen(self._locations_db))
+
+    # --- location picker (called from agent thread via resolve_location tool) ---
+
+    def request_location(self, name: str) -> str | None:
+        """Block the calling thread until the user picks and registers a folder."""
+        event = threading.Event()
+        result: list[str | None] = [None]
+
+        def on_picked(entry) -> None:
+            if entry is not None:
+                self._locations_db.upsert(entry)
+                result[0] = entry.path
+            event.set()
+
+        self.call_from_thread(self._open_location_picker, name, on_picked)
+        completed = event.wait(timeout=120)
+        if not completed:
+            log.warning("app.request_location_timeout", extra={"name": name})
+        return result[0]
+
+    def _open_location_picker(self, name: str, callback) -> None:
+        from stash.tui.screens.location_picker import LocationPickerScreen
+        self.push_screen(LocationPickerScreen(suggested_name=name), callback)

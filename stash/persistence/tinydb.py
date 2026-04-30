@@ -15,6 +15,50 @@ from tinydb import TinyDB, Query
 log = logging.getLogger(__name__)
 
 
+class LocationEntry(BaseModel):
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    path: str
+    added: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    last_verified: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+
+
+class LocationsDB:
+    def __init__(self, path: Path) -> None:
+        self._db = TinyDB(path)
+        self._table = self._db.table("locations")
+
+    def all(self) -> list[LocationEntry]:
+        return [LocationEntry(**doc) for doc in self._table.all()]
+
+    def resolve(self, name: str) -> LocationEntry | None:
+        needle = name.strip().lower()
+        for doc in self._table.all():
+            entry = LocationEntry(**doc)
+            if entry.name.lower() == needle:
+                return entry
+            if any(a.strip().lower() == needle for a in entry.aliases):
+                return entry
+        return None
+
+    def upsert(self, entry: LocationEntry) -> None:
+        Location = Query()
+        self._table.upsert(entry.model_dump(), Location.name == entry.name)
+        log.debug("locations_db.upsert", extra={"name": entry.name, "path": entry.path})
+
+    def delete(self, name: str) -> None:
+        Location = Query()
+        self._table.remove(Location.name == name)
+        log.debug("locations_db.delete", extra={"name": name})
+
+    def verify(self, entry: LocationEntry) -> tuple[bool, LocationEntry]:
+        exists = Path(entry.path).exists()
+        updated = entry.model_copy(update={"last_verified": datetime.now(UTC).isoformat()})
+        if exists:
+            self.upsert(updated)
+        return exists, updated
+
+
 class FolderRule(BaseModel):
     id: str
     name: str

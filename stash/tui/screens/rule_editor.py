@@ -106,6 +106,25 @@ class RuleEditorScreen(ModalScreen[FolderRule | None]):
         padding: 0;
         margin-top: 1;
     }
+    RuleEditorScreen #path-row {
+        height: 3;
+        layout: horizontal;
+    }
+    RuleEditorScreen #path-row Input {
+        width: 1fr;
+    }
+    RuleEditorScreen #btn-browse {
+        width: 10;
+        height: 3;
+        border: none;
+        background: #21262D;
+        color: #8B949E;
+        padding: 0 2;
+    }
+    RuleEditorScreen #btn-browse:hover {
+        background: #2D333B;
+        color: #C9D1D9;
+    }
     RuleEditorScreen #error-label {
         height: 1;
         color: #F85149;
@@ -174,7 +193,9 @@ class RuleEditorScreen(ModalScreen[FolderRule | None]):
                 yield Input(value=name, placeholder="Downloads Cleanup", id="inp-name")
 
                 yield Label("Target path", classes="field-label")
-                yield Input(value=path, placeholder="~/Downloads", id="inp-path")
+                with Horizontal(id="path-row"):
+                    yield Input(value=path, placeholder="~/Downloads", id="inp-path")
+                    yield Button("Browse", id="btn-browse")
 
                 yield Label("Instructions", classes="field-label")
                 yield Input(
@@ -224,6 +245,14 @@ class RuleEditorScreen(ModalScreen[FolderRule | None]):
             self.action_save()
         elif event.button.id == "btn-cancel":
             self.action_cancel()
+        elif event.button.id == "btn-browse":
+            from stash.tui.screens.folder_picker import FolderPickerScreen
+            current = self.query_one("#inp-path", Input).value.strip()
+            self.app.push_screen(FolderPickerScreen(initial_path=current), self._on_folder_picked)
+
+    def _on_folder_picked(self, path: str | None) -> None:
+        if path is not None:
+            self.query_one("#inp-path", Input).value = path
 
     # ------------------------------------------------------------------
     # Internal

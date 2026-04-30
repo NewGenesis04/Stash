@@ -233,9 +233,9 @@ class TestGlob:
         assert result.startswith("error:")
         assert "does not exist" in result
 
-    def test_default_base_path_uses_cwd(self, tmp_path, monkeypatch):
-        """When base_path is omitted, glob runs from the current directory."""
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "match.txt").write_text("")
-        result = glob_tool("*.txt")
-        assert "match.txt" in result
+    def test_default_base_path_uses_home(self):
+        """When base_path is omitted, glob runs from the user's home directory."""
+        from pathlib import Path
+        result = glob_tool("*")
+        home = str(Path.home())
+        assert home in result or result == "(no matches)"

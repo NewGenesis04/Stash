@@ -1,7 +1,16 @@
 # stash — UI Design Specification
-**v0.1 · Local-first File Management Agent**
+**v0.2 · Local-first File Management Agent**
 
 > A local-first, agent-powered file management TUI. Self-contained, auditable, and built around human-in-the-loop control. Powered by Gemma 4 via Ollama. Your files never leave your machine.
+
+---
+
+## 00 Changelog
+
+| Version | Date | Changes |
+|---|---|---|
+| v0.1 | 2026-04-09 | Initial spec |
+| v0.2 | 2026-04-30 | Added loading screen, model picker, location registry screens, folder picker; updated keybindings, tool set, architecture decisions; corrected sidebar width; added boot flow and run state machine |
 
 ---
 
@@ -10,6 +19,7 @@
 stash is a developer tool, not a consumer app. The aesthetic should feel like a terminal that went to design school — dark, monospaced, structured, and calm. Every element earns its place. Nothing decorative.
 
 - Dark background at all times — no light mode default
+- Default theme: **nord** (Textual built-in); user can cycle with `ctrl+t`
 - Monospace font throughout — Courier New or JetBrains Mono
 - Accent colours carry semantic meaning, not decoration
 - Borders are subtle — they define space, not shout
@@ -27,7 +37,7 @@ All colours are defined for dark mode. stash supports Textual's built-in theme c
 | Swatch | Name | Hex | Role |
 |---|---|---|---|
 | 🟫 | Background | `#0E0E0F` | App root, deepest surface |
-| 🟫 | Panel | `#161B22` | Pane headers, title bar, footer bar |
+| 🟫 | Panel | `#161B22` | Pane headers, title bar, modal dialogs |
 | 🟫 | Surface | `#21262D` | Message bubbles, code blocks, inputs |
 | 🟫 | Border | `#30363D` | All structural borders and dividers |
 
@@ -87,9 +97,9 @@ stash uses a single font family throughout: Courier New (or JetBrains Mono as a 
 The app is divided into four horizontal zones stacked vertically:
 
 1. **Title Bar** — app name, Ollama status badge, model badge, active rules count
-2. **Main Layout** — two-column: chat pane (flex: 1) + sidebar (fixed 240px)
+2. **Main Layout** — two-column: chat pane (flex: 1) + sidebar (fixed 44 columns)
 3. **Approve Bar** — appears above input when a plan is pending, disappears after
-4. **Status Bar** — always visible at bottom, keybindings + idle/active state
+4. **Footer** — Textual `Footer` widget; always visible, shows all active keybindings
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -98,11 +108,11 @@ The app is divided into four horizontal zones stacked vertically:
 │                                    │  Folder Rules  │
 │         Chat / Task Pane           ├────────────────┤
 │           (flex: 1)                │  Audit Log     │
-│                                    │  (240px fixed) │
+│                                    │  (44 cols)     │
 ├────────────────────────────────────┴────────────────┤
 │  Approve Bar (conditional)                          │
 ├─────────────────────────────────────────────────────┤
-│  Status Bar — ctrl+t  ctrl+n  ctrl+l  ctrl+q       │
+│  Footer — ctrl+t  ctrl+n  ctrl+l  ctrl+r  ctrl+q   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -135,7 +145,7 @@ Renders inside the chat pane as a system message when a plan is ready. Contains:
 
 The approve bar is a separate fixed zone above the chat input. It disappears once the plan is approved or rejected. Keybindings: Enter to approve, Esc to reject.
 
-### 4.4 Sidebar (right, 240px fixed)
+### 4.4 Sidebar (right, 44 columns fixed)
 
 Split into two sections separated by a border:
 
@@ -149,50 +159,167 @@ Sidebar pane headers follow the same pattern as the chat pane header — muted u
 
 ---
 
-## 05 Components
+## 05 Boot Flow
 
-### 5.1 Keybinding Chips
+### 5.1 Sequence
 
-Used in pane headers and the status bar. Background `#21262D`, 1px border `#30363D`, Accent Blue text. 3px border radius. 10px font.
+On launch the app runs this sequence:
+
+1. **LoadingScreen** pushes over MainScreen — 5-second animated splash
+   - STASH ASCII art with a sweeping blue → purple → green colour gradient (20 fps)
+   - Fading status messages: `Connecting to Ollama…` → `Loading rules…` → `Warming up…` → `Ready`
+   - Fill progress bar tracking the four phases
+   - Dismisses automatically after 5 seconds, passing the `HealthResult` to the app
+2. **ModelPickerScreen** (conditional) — pushed if Ollama is running but no model is selected or the configured model is missing. Skipped on normal runs.
+3. **MainScreen** — revealed when loading screen dismisses
+
+### 5.2 Run State Machine
+
+The app enforces a strict state machine for the chat → plan → approve → execute flow. Only one run can be active at a time.
+
+```
+IDLE → PLANNING → AWAITING_APPROVAL → RUNNING → IDLE
+```
+
+| State | Chat input | Description |
+|---|---|---|
+| `IDLE` | Enabled | Ready for user input |
+| `PLANNING` | Disabled | Agent is generating a plan in executor thread |
+| `AWAITING_APPROVAL` | Disabled | Plan shown, waiting for user to approve or reject |
+| `RUNNING` | Disabled | Agent is executing approved steps |
+
+---
+
+## 06 Screens
+
+### 6.1 MainScreen
+
+The persistent base screen. Always on the bottom of the stack. Composes `TitleBar`, `ChatWidget`, `SidebarWidget`, and Textual `Footer`. Modal screens push on top of it.
+
+### 6.2 LoadingScreen
+
+Boot splash. Non-modal `Screen`, pushed on top of `MainScreen` on startup. Auto-dismisses after 5 seconds.
+
+### 6.3 ModelPickerScreen
+
+`ModalScreen[str | None]`. Two states:
+
+- **Models found** — scrollable `ListView` of available Ollama model names, arrow-key navigation, Enter to confirm
+- **No models** — manual text `Input` with a hint to run `ollama pull <name>` first
+
+Triggered automatically on first run or when the configured model is not installed. Also accessible at any time via `ctrl+o`. Saves the selection to `config.toml` on confirm.
+
+### 6.4 RuleEditorScreen
+
+`ModalScreen[FolderRule | None]`. Form for creating and editing folder rules. Fields:
+
+- **Name** — text input
+- **Target path** — text input + **Browse** button → opens `FolderPickerScreen`; the selected path is written back into the field. Manual typing also accepted.
+- **Instructions** — text input; natural-language prompt for the scheduled agent
+- **Run every** — `Select` widget with preset intervals (1h / 6h / 12h / 24h / 72h / 168h)
+- **Allowed tools** — checkboxes for each tool in the set; all checked by default on new rules
+- **Enabled** — checkbox
+
+`resolve_location` is intentionally excluded from the rule editor's tool allowlist. Scheduled rules run unattended; they must use absolute paths authored at rule-creation time, not live picker interactions.
+
+### 6.5 FolderPickerScreen
+
+`ModalScreen[str | None]`. Minimal directory picker — `DirectoryTree` rooted at home, selected-path label, Select / Cancel buttons. Returns an absolute path string, or `None` on cancel. Used by `RuleEditorScreen` to populate the target path field. Not a location registration screen — it does not write to the location registry.
+
+Bindings: `ctrl+s` to confirm (silent no-op if nothing selected), `esc` to cancel.
+
+### 6.6 LocationPickerScreen
+
+`ModalScreen[LocationEntry | None]`. Registers a named folder in the location registry. Composes:
+
+- **DirectoryTree** — rooted at home, for visual folder selection
+- **Selected path label** — updates live as the user navigates
+- **Name input** — canonical name (e.g. `Movies`)
+- **Aliases input** — comma-separated aliases (e.g. `films, cinema`)
+
+Returns a `LocationEntry` on save, or `None` on cancel. The entry is immediately persisted to the registry by the caller. In the lazy registration flow (triggered by `resolve_location` during an agent run), the `suggested_name` field is pre-filled from the unresolved name the agent passed.
+
+Bindings: `ctrl+s` to save, `esc` to cancel.
+
+### 6.7 LocationRegistryScreen
+
+`ModalScreen[None]`. Full management interface for the location registry. Opens via `ctrl+p`. Renders a `DataTable` with columns: Name, Aliases, Path, Verified.
+
+Actions via footer buttons:
+
+| Button | Behaviour |
+|---|---|
+| **+ Add** | Pushes `LocationPickerScreen` with no pre-fill |
+| **✎ Edit** | Pushes `LocationPickerScreen` pre-filled with selected entry. If the user renames the entry, the old record is deleted before the new one is upserted (prevents duplicates) |
+| **↻ Verify** | Checks that the registered path still exists on disk; updates `last_verified` timestamp if it does |
+| **✗ Remove** | Deletes the selected entry from the registry |
+| **Close** | Dismisses |
+
+Binding: `ctrl+n` to add, `esc` to close.
+
+---
+
+## 07 Components
+
+### 7.1 TitleBar
+
+Fixed top bar. Three badge slots, all right-aligned:
+
+| Badge | Trigger | Style |
+|---|---|---|
+| Ollama status | Always visible | Alternates `●` / `◉` at 0.8s interval when online (pulse effect) |
+| Active model | Visible when a model is configured | Blue tinted badge |
+| Active rules | Visible when ≥ 1 rule exists | Amber tinted badge with `◷` prefix |
+
+Badges use the tinted background pattern from §2.4. The pulse animation on the Ollama badge is implemented by toggling between `●` and `◉` on a timer — no CSS animation required.
+
+### 7.2 Keybinding Chips
+
+Used in pane headers and the footer. Background `#21262D`, 1px border `#30363D`, Accent Blue text. 10px font.
 
 ```
   ctrl+t    ctrl+n    ctrl+l    ctrl+q  
 ```
 
-### 5.2 Tool Chips
+### 7.3 Tool Chips
 
-Inline labels showing which tool is being or will be called. Tinted bg matching semantic colour (green for file ops). Border slightly darker than bg. 4px border radius. 10–11px font.
+Inline labels showing which tool is being or will be called. Tinted bg matching semantic colour (green for file ops). Border slightly darker than bg. 10–11px font.
 
 ```
-  glob    ls    mv    rename    mkdir    rm  
+  glob    ls    mv    rename    mkdir    rm    resolve_location  
 ```
 
 Colours per tool type (all file ops share green):
 
 - bg `#0D2B1A`, border `#238636`, text `#3FB950`
 
-### 5.3 Buttons
+### 7.4 Buttons
 
-Two button types only:
+Two primary button types:
 
-- **Approve** — bg `#0D2B1A`, text `#3FB950`, border `#238636`
-- **Reject** — bg `#2B0D0D`, text `#F85149`, border `#6E2B2B`
+- **Approve / Save** — bg `#0D2B1A`, text `#3FB950`
+- **Reject / Cancel** — bg `#21262D`, text `#8B949E`; hover shifts to bg `#2B0D0D`, text `#F85149`
 
 Monospace font, 11px, 4px border radius, 4px 12px padding.
 
-### 5.4 Status Dots
+### 7.5 Status Dots
 
-6px circle, filled with accent colour. For Ollama online, the dot pulses (CSS animation) to show it is live. Used in title bar badges and sidebar rule list.
+Used in title bar badges and sidebar rule list:
 
-### 5.5 Pane Headers
+- `●` / `◉` — Ollama status (alternates to create pulse)
+- `●` green — rule last run OK
+- `◷` blue — rule scheduled
+- dim grey — rule paused
+
+### 7.6 Pane Headers
 
 Consistent across all panes: bg `#161B22`, 1px bottom border `#30363D`, 11px muted uppercase label left, keybinding chip right. Padding 5px 12px.
 
 ---
 
-## 06 Keybindings
+## 08 Keybindings
 
-All keybindings are shown in the status bar at all times. `ctrl+t` is listed first — it is intentional, front-and-centre UX.
+All keybindings shown in the Textual `Footer` at all times.
 
 | Binding | Action |
 |---|---|
@@ -200,29 +327,57 @@ All keybindings are shown in the status bar at all times. `ctrl+t` is listed fir
 | `ctrl+n` | New folder rule — opens rule editor screen |
 | `ctrl+l` | Focus audit log sidebar |
 | `ctrl+r` | Focus folder rules sidebar |
+| `ctrl+o` | Change model — opens model picker screen |
+| `ctrl+p` | Location registry — opens location registry screen |
 | `ctrl+q` | Quit stash |
 | `Enter` | Send task / approve plan |
 | `Esc` | Reject plan |
 
 ---
 
-## 07 Ollama Health States
+## 09 Location Registry
 
-The Ollama status badge in the title bar has three states, checked on startup and visible at all times.
+### 9.1 Concept
 
-| State | Badge | Behaviour |
-|---|---|---|
-| Running + model pulled | `● ollama running` (green) | Full operation. All features available. |
-| Running + model missing | `⚠ model not found` (amber) | Warn user, offer to pull model inline in chat. |
-| Ollama not running | `✗ ollama offline` (red) | Hard block. Show message, no agent features until resolved. |
+The agent has no ability to infer or construct filesystem paths from informal names. Every path it uses must come from a tool call. The location registry is the mechanism that grounds informal folder references ("my downloads folder", "the movies folder") to real, user-confirmed absolute paths.
+
+### 9.2 LocationEntry
+
+Each entry has: `name` (canonical), `aliases` (list of alternate names), `path` (absolute), `added` (ISO timestamp), `last_verified` (ISO timestamp).
+
+Resolution is exact string match after lowercasing and stripping — no fuzzy matching. Aliases extend vocabulary explicitly; the user teaches the agent their naming conventions incrementally.
+
+### 9.3 resolve_location Tool
+
+The `resolve_location` tool is the agent's only way to turn a name into a path. It:
+
+1. Looks up the name (and aliases) in the registry
+2. If found: verifies the path still exists on disk; returns the path or an error asking the user to re-register
+3. If not found: blocks the executor thread (via `threading.Event`) and opens `LocationPickerScreen` in the TUI; the user picks and names the folder; the entry is persisted; the path is returned to the agent
+
+The blocking wait has a 120-second timeout as a safety net against the callback never firing (e.g. screen forcibly removed by an exception). On timeout, `None` is returned and the agent receives an error string.
+
+`resolve_location` is marked `readonly: True` in its schema, meaning it also executes during the plan (dry-run) phase so the plan shows real resolved paths rather than placeholder strings.
 
 ---
 
-## 08 Agent UI Instructions
+## 10 Ollama Health States
+
+The Ollama status badge in the title bar has three states, checked on startup and polled every 30 seconds.
+
+| State | Badge | Behaviour |
+|---|---|---|
+| Running + model pulled | `● ollama running` (green, pulsing) | Full operation. All features available. |
+| Running + model missing | `⚠ model not found` (amber) | Warn user, offer to pull model inline in chat. |
+| Ollama not running | `✗ ollama offline` (red) | Hard block on startup. Poll continues; badge updates if Ollama comes back. |
+
+---
+
+## 11 Agent UI Instructions
 
 Rules the agent must follow when surfacing reasoning and actions in the chat pane.
 
-### 8.1 ReAct Step Rendering
+### 11.1 ReAct Step Rendering
 
 - Every step must appear in the chat stream immediately as it happens — do not batch
 - **Thought steps** — Accent Purple left border, italic text, label `stash — thinking`
@@ -230,7 +385,7 @@ Rules the agent must follow when surfacing reasoning and actions in the chat pan
 - **Observation steps** — Accent Amber left border, label `stash — observed`
 - **Final answer** — Accent Blue left border, label `stash — done`
 
-### 8.2 Plan Surface
+### 11.2 Plan Surface
 
 - Before any execution, the full plan must render as a system message with Amber border
 - Each plan step must show: step number, tool chip, plain-English description, status circle (○)
@@ -238,13 +393,13 @@ Rules the agent must follow when surfacing reasoning and actions in the chat pan
 - The approve bar must block input until the user acts on it
 - Once approved, status circles update to ✓ as each step completes
 
-### 8.3 Tool Calls
+### 11.3 Tool Calls
 
 - Every tool call must render its name as a coloured chip, never plain text
 - Tool call results must show outcome inline: e.g. `glob(...) → 11 files found`
 - Unauthorised tool calls must never happen — if attempted, render a red error message immediately
 
-### 8.4 Scheduler Messages
+### 11.4 Scheduler Messages
 
 - When a scheduled rule fires, show a notification in the audit log sidebar immediately
 - Do not interrupt an active chat session with scheduler output — queue it to the sidebar
@@ -252,9 +407,9 @@ Rules the agent must follow when surfacing reasoning and actions in the chat pan
 
 ---
 
-## 09 Architecture Decisions
+## 12 Architecture Decisions
 
-Locked decisions from planning phase. Do not revisit without strong reason.
+Locked decisions from planning and implementation. Do not revisit without strong reason.
 
 | Decision | Choice | Reason |
 |---|---|---|
@@ -265,12 +420,17 @@ Locked decisions from planning phase. Do not revisit without strong reason.
 | Model | Gemma 4 (4B or 12B) | Lightweight, built for edge compute |
 | Agent pattern | Pure ReAct, hand-rolled | Full control, no framework overhead |
 | Audit store | SQLite | Structured, queryable, stdlib |
-| Rules store | TinyDB | JSON-shaped, easy to edit |
+| Rules store | TinyDB (`rules.json`) | JSON-shaped, easy to edit |
+| Locations store | TinyDB (`locations.json`) | Separate file from rules; fully independent |
 | Scheduler | APScheduler in-process | Shares state, no IPC headaches |
 | TUI framework | Textual | Mature, reactive, theme support built-in |
+| Default theme | Nord | Ships with Textual; dark, calm, developer-focused |
 | Config | TOML | Set-once infrastructure config |
-| V1 tool set | `ls mv mkdir rm rename glob` | Atomic file ops, nothing more |
+| Tool set | `ls mv mkdir rm rename glob resolve_location` | Atomic file ops + location grounding |
+| Path resolution | Registry-first, picker fallback | Model never guesses or constructs paths |
+| Picker cross-thread | `threading.Event` with 120s timeout | Executor thread blocks; asyncio thread signals on dismiss |
+| resolve_location in rules | Excluded from rule tool allowlist | Scheduled rules run unattended; picker cannot fire without a user present |
 
 ---
 
-*stash design spec · v0.1 · confidential*
+*stash design spec · v0.2 · confidential*
