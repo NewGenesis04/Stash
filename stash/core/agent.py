@@ -54,31 +54,48 @@ class Agent:
             raise ValueError("No model selected. Launch the app and pick a model first.")
         self._max_steps = ollama_config.get("max_steps", 20)
 
-    def plan(self, task: str, registry: SessionRegistry, run_id: str | None = None) -> list[ReActStep]:
+    def plan(self, task: str, registry: SessionRegistry, run_id: str | None = None) -> tuple[list[ReActStep], list[dict]]:
         """Dry-run the ReAct loop — tools are not executed. Used for HITL approval."""
         return self._loop(task, registry, dry_run=True, run_id=run_id)
 
-    def run(self, task: str, registry: SessionRegistry, run_id: str | None = None) -> list[ReActStep]:
+    def run(self, task: str, registry: SessionRegistry, run_id: str | None = None, initial_messages: list[dict] | None = None) -> list[ReActStep]:
         """Execute the ReAct loop against an approved session registry."""
-        return self._loop(task, registry, dry_run=False, run_id=run_id)
+        steps, _ = self._loop(task, registry, dry_run=False, run_id=run_id, initial_messages=initial_messages)
+        return steps
 
     # ------------------------------------------------------------------
 
-    def _loop(self, task: str, registry: SessionRegistry, dry_run: bool, run_id: str | None = None) -> list[ReActStep]:
+    def _loop(self, task: str, registry: SessionRegistry, dry_run: bool, run_id: str | None = None, initial_messages: list[dict] | None = None) -> tuple[list[ReActStep], list[dict]]:
         run_id = run_id or str(uuid.uuid4())
         ctx = {"run_id": run_id, "model": self._model, "dry_run": dry_run}
 
         log.info("agent.run_start", extra={**ctx, "task": task, "tools": registry.available})
 
         tools = _ollama_tools(self.tools, registry.available)
-        preferences = self._load_preferences()
-        messages = [{"role": "system", "content": build_system_prompt(preferences)}]
-        messages.extend(self._load_session_history())
-        messages.append({"role": "user", "content": task})
+
+        if initial_messages:
+            messages = list(initial_messages)
+            log.debug("agent.resuming_from_cache", extra={**ctx, "message_count": len(messages)})
+        else:
+            preferences = self._load_preferences()
+            messages = [{"role": "system", "content": build_system_prompt(preferences)}]
+            messages.extend(self._load_session_history())
+            messages.append({"role": "user", "content": task})
 
         steps: list[ReActStep] = []
 
         for step_num in range(self._max_steps):
+            # Phase 2: Token-count estimation
+            # Heuristic: char count / 4
+            total_chars = sum(len(str(m.get("content", ""))) for m in messages)
+            # Add estimated chars for tool definitions too
+            total_chars += len(str(tools))
+            estimated_tokens = total_chars // 4
+            
+            context_window = self.config.get("ollama", {}).get("context_window", 32768)
+            if estimated_tokens > context_window * 0.8:
+                log.warning("agent.context_pressure", extra={**ctx, "estimated_tokens": estimated_tokens, "window": context_window})
+
             response = self._client.chat(model=self._model, messages=messages, tools=tools)
             message = response["message"]
             content = (message.get("content") or "").strip()
@@ -115,7 +132,7 @@ class Agent:
                     except UnauthorisedToolError as e:
                         log.error("agent.unauthorised_tool", extra={**ctx, "step": step_num, "tool": fn_name, "reason": str(e)})
                         steps.append(ReActStep(type="error", content=str(e)))
-                        return steps
+                        return steps, messages
 
                 steps.append(ReActStep(
                     type="observation",
@@ -136,7 +153,7 @@ class Agent:
             steps.append(ReActStep(type="error", content=msg))
 
         log.info("agent.run_complete", extra={**ctx, "total_steps": len(steps)})
-        return steps
+        return steps, messages
 
     def _call_tool(self, tool: str, args: dict, registry: SessionRegistry) -> str:
         for cb in self.callbacks:
@@ -159,17 +176,30 @@ class Agent:
             return None
         from pathlib import Path
         content = Path(path).read_text(encoding="utf-8").strip()
-        return content or None
+        if not content:
+            return None
+        
+        # Phase 2: Preference length cap
+        if len(content) > 2000:
+            log.warning("agent.preferences_truncated", extra={"path": path, "original_length": len(content)})
+            content = content[:2000] + "\n\n[preferences truncated for length]"
+            
+        return content
 
     def _load_session_history(self) -> list[dict]:
         import stash.persistence.sqlite as db
         conn = self.config.get("_db_conn")
         if conn is None:
             return []
+        
+        # Phase 2: Configurable history limit
+        limit = self.config.get("ollama", {}).get("history_limit", 20)
+        
         return db.get_history(
             conn,
             rule_id=self.config.get("_rule_id"),
             session_id=self.config.get("_session_id"),
+            limit=limit,
         )
 
 

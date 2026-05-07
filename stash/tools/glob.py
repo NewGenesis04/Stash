@@ -48,4 +48,12 @@ def glob_tool(pattern: str, base_path: str = "~") -> str:
     matches = sorted(base.glob(pattern))
     if not matches:
         return "(no matches)"
-    return "\n".join(str(m) for m in matches)
+    
+    count = len(matches)
+    if count > 100:
+        matches = matches[:100]
+        suffix = f"\n... and {count - 100} more"
+    else:
+        suffix = ""
+        
+    return "\n".join(str(m) for m in matches) + suffix

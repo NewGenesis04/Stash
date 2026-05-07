@@ -40,32 +40,6 @@ first to confirm what exists before taking any action.
 - Do not explore paths the user has not mentioned.
 - Do not create folder structures the user hasn't asked for.
 
-## Examples
-
-### Example 1 — Folder reference, resolve first
-User: What's in my downloads folder?
-[Call resolve_location: name="downloads" — returns "C:\\Users\\NewGenesis04\\Downloads"]
-[Call ls: path="C:\\Users\\NewGenesis04\\Downloads"]
-Stash: 12 files in Downloads: ...
-
-### Example 2 — Unknown location, picker fires
-User: Move all PDFs to my work archive.
-[Call resolve_location: name="work archive" — user picks folder, returns "D:\\Work\\Archive"]
-[Call glob: pattern=**/*.pdf, base_path="C:\\Users\\NewGenesis04\\Documents"]
-[Call mv: ...]
-Stash: Moved 4 PDFs to D:\\Work\\Archive.
-
-### Example 3 — Ambiguous task, ask first
-User: Sort my downloads folder.
-Stash: How would you like them sorted? For example: by file type, by date, or by a
-specific naming pattern?
-
-### Example 4 — Error during execution
-User: Delete all the .tmp files in my projects folder.
-[Call resolve_location: name="projects" — returns "C:\\Users\\NewGenesis04\\Projects"]
-[Call glob: pattern=**/*.tmp, base_path="C:\\Users\\NewGenesis04\\Projects" — returns "(no matches)"]
-Stash: No .tmp files found in Projects. Nothing was deleted.
-
 ## Output Format
 - After completing a task: a brief summary of what was done. The UI already shows each
   step — do not narrate them again.
@@ -98,8 +72,14 @@ def _system_context() -> str:
 
 
 def build_system_prompt(preferences: str | None = None) -> str:
+    from pathlib import Path
+    from stash.prompts.examples import get_examples
+    
+    home = str(Path.home())
     context_block = f"\n\n## System Context\n{_system_context()}"
-    base = SYSTEM_PROMPT + context_block
+    examples_block = f"\n\n## Examples\n\n{get_examples(home)}"
+    
+    base = SYSTEM_PROMPT + context_block + examples_block
     if not preferences:
         return base
     return f"{base}\n\n## User Preferences\n{preferences}"

@@ -168,7 +168,7 @@ class TestAgentPlan:
             _tool_resp("ls", {"path": tmp_path.as_posix()}),
             _final_resp("Listed."),
         ]
-        steps = agent.plan("list files", _readonly_registry())
+        steps, _ = agent.plan("list files", _readonly_registry())
         obs = next(s for s in steps if s.type == "observation")
         assert "file.txt" in obs.content  # ls actually ran
 
@@ -182,7 +182,7 @@ class TestAgentPlan:
             _tool_resp("mv", {"src": src.as_posix(), "dst": dst.as_posix()}),
             _final_resp("Moved."),
         ]
-        steps = agent.plan("move file", _full_registry())
+        steps, _ = agent.plan("move file", _full_registry())
         obs = next(s for s in steps if s.type == "observation")
         assert obs.content == "[plan mode — not executed]"
         assert src.exists()  # file untouched

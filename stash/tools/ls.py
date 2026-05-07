@@ -43,4 +43,12 @@ def ls_tool(path: str) -> str:
     entries = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name))
     if not entries:
         return "(empty)"
-    return "\n".join(e.name + ("/" if e.is_dir() else "") for e in entries)
+    
+    count = len(entries)
+    if count > 100:
+        entries = entries[:100]
+        suffix = f"\n... and {count - 100} more"
+    else:
+        suffix = ""
+        
+    return "\n".join(e.name + ("/" if e.is_dir() else "") for e in entries) + suffix

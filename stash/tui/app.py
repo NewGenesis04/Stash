@@ -17,7 +17,7 @@ import uuid
 from enum import Enum
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from textual.app import App
 from textual.binding import Binding
 from textual.message import Message
@@ -85,6 +85,7 @@ class PendingRun(BaseModel):
     agent: Agent
     registry: SessionRegistry
     task: str
+    messages: list[dict] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +203,7 @@ class StashApp(App):
 
         try:
             loop = asyncio.get_event_loop()
-            steps = await loop.run_in_executor(None, agent.plan, task, registry, run_id)
+            steps, messages = await loop.run_in_executor(None, agent.plan, task, registry, run_id)
         except Exception as e:
             log.error("app.plan_failed", extra={"run_id": run_id, "error": str(e)}, exc_info=True)
             db.finish_run(self._sqlite_conn, run_id, "failed")
@@ -228,7 +229,7 @@ class StashApp(App):
             self._run_state = RunState.IDLE
             return
 
-        self._pending_run = PendingRun(run_id=run_id, agent=agent, registry=registry, task=task)
+        self._pending_run = PendingRun(run_id=run_id, agent=agent, registry=registry, task=task, messages=messages)
         self._run_state = RunState.AWAITING_APPROVAL
         log.info("app.plan_ready", extra={"run_id": run_id, "steps": len(steps)})
         self.screen.query_one("ChatWidget").show_plan(steps)
@@ -246,7 +247,7 @@ class StashApp(App):
         try:
             loop = asyncio.get_event_loop()
             steps = await loop.run_in_executor(
-                None, pending.agent.run, pending.task, pending.registry, pending.run_id
+                None, pending.agent.run, pending.task, pending.registry, pending.run_id, pending.messages
             )
             response = next((s for s in steps if s.type == "response"), None)
             if response:
@@ -368,6 +369,10 @@ class StashApp(App):
 
     def request_location(self, name: str) -> str | None:
         """Block the calling thread until the user picks and registers a folder."""
+        # Phase 1: Defer picker during planning phase
+        if self._run_state == RunState.PLANNING:
+            return f"[plan mode — will prompt user to pick folder for '{name}']"
+
         event = threading.Event()
         result: list[str | None] = [None]
 

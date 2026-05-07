@@ -25,7 +25,7 @@ import stash.persistence.sqlite as db
 from stash.core.agent import Agent, ReActStep
 from stash.core.registry import SessionRegistry
 from stash.health.ollama import HealthResult, HealthStatus
-from stash.persistence.tinydb import FolderRule, RulesDB
+from stash.persistence.tinydb import FolderRule, LocationsDB, RulesDB
 from stash.tools import ALL_SCHEMAS
 from stash.tui.app import (
     OllamaStatusChanged,
@@ -90,7 +90,7 @@ def mock_agent_factory():
             [],
             ALL_SCHEMAS,
         )
-    agent.plan = MagicMock(return_value=_PLAN_STEPS)
+    agent.plan = MagicMock(return_value=(_PLAN_STEPS, []))
     agent.run = MagicMock(return_value=_RUN_STEPS)
 
     registry = SessionRegistry({})  # empty but a real instance — type check passes
@@ -112,6 +112,8 @@ def make_app(tmp_path, mock_scheduler, mock_agent_factory, monkeypatch):
     async def _test_on_mount(self):
         # Bypass LoadingScreen. Wire up the app the same way _on_loading_done does,
         # but skip _poll_ollama (needs a live Ollama) and set_interval (noise in tests).
+        from stash.tui.screens.main import MainScreen
+        self.push_screen(MainScreen(model="test-model"))
         self._scheduler.start()
         try:
             self.screen.query_one("SidebarWidget").load_rules(self._rules_db.all())
@@ -124,6 +126,7 @@ def make_app(tmp_path, mock_scheduler, mock_agent_factory, monkeypatch):
         conn = sqlite3.connect(":memory:")
         db._migrate(conn)
         rules_db = RulesDB(tmp_path / "rules.json")
+        locations_db = LocationsDB(tmp_path / "locations.json")
         if rules:
             for r in rules:
                 rules_db.upsert(r)
@@ -132,6 +135,7 @@ def make_app(tmp_path, mock_scheduler, mock_agent_factory, monkeypatch):
             config_path=tmp_path / "config.toml",
             scheduler=mock_scheduler,
             rules_db=rules_db,
+            locations_db=locations_db,
             sqlite_conn=conn,
             agent_factory=mock_agent_factory,
         )
@@ -256,12 +260,12 @@ async def test_ollama_offline_shows_badge(make_app):
 async def test_rule_completed_updates_sidebar(make_app):
     rule = _sample_rule("rule-99")
     async with make_app(rules=[rule]).run_test() as pilot:
-        await pilot.pause()
+        await pilot.pause(0.5)
         # Should not raise — sidebar finds the rule item and updates its dot
         pilot.app.post_message(RuleCompleted("rule-99", "completed"))
-        await pilot.pause()
-        pilot.app.screen.query_one("#rule-rule-99")
-
+        await pilot.pause(0.5)
+        
+        pilot.app.screen.query_one("#rule_rule_99")
 
 # ---------------------------------------------------------------------------
 # Input interaction

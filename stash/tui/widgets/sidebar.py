@@ -148,14 +148,18 @@ class FolderRulesSection(Widget):
     def load_rules(self, rules: list[FolderRule]) -> None:
         for item in list(self.query(RuleItem)):
             item.remove()
-        for rule in rules:
-            self.mount(RuleItem(rule))
+        items = [RuleItem(rule) for rule in rules]
+        if items:
+            self.mount_all(items)
 
     def update_rule_status(self, rule_id: str, status: str) -> None:
+        safe_id = f"rule-{rule_id}".replace("-", "_")
         try:
-            self.query_one(f"#rule-{rule_id}", RuleItem).set_status(status)
+            self.query_one(f"#{safe_id}", RuleItem).set_status(status)
         except Exception:
-            pass
+            # If not found (e.g. still mounting), log but don't crash
+            import logging
+            logging.getLogger(__name__).warning(f"Sidebar: Rule widget not found for {rule_id}")
 
 
 # ---------------------------------------------------------------------------
