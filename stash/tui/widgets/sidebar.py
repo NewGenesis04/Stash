@@ -114,7 +114,7 @@ class RuleItem(Widget):
     """
 
     def __init__(self, rule: FolderRule) -> None:
-        super().__init__(id=f"rule-{rule.id}")
+        super().__init__(id=f"rule-{rule.id}".replace("-", "_"))
         self._rule = rule
 
     def compose(self) -> ComposeResult:

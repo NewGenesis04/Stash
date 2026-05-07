@@ -134,9 +134,13 @@ def get_history(
             (rule_id, limit),
         ).fetchall()
     else:
+        if session_id is None:
+            log.warning("sqlite.get_history_no_session_id")
+            return []
         # Chat: scoped to the current session only.
+        # Uses = (not IS) so that a None session_id can never match NULL rows.
         rows = conn.execute(
-            "SELECT role, content FROM conversations WHERE rule_id IS NULL AND session_id IS ? ORDER BY id DESC LIMIT ?",
+            "SELECT role, content FROM conversations WHERE rule_id IS NULL AND session_id = ? ORDER BY id DESC LIMIT ?",
             (session_id, limit),
         ).fetchall()
     log.debug("sqlite.get_history", extra={"rule_id": rule_id, "session_id": session_id, "limit": limit, "returned": len(rows)})

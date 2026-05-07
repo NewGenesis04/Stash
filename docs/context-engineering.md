@@ -470,7 +470,7 @@ sequenceDiagram
     participant Callbacks as Callback chain
 
     Loop->>Ollama: messages[], tools[]
-    Ollama-->>Loop: message { tool_calls: [{function: {name, arguments}}] }
+    Ollama-->>Loop: message with tool_calls list
     Loop->>Loop: append message to messages[]
     Loop->>Dispatch: _call_tool(fn_name, fn_args, registry)
     Dispatch->>Callbacks: on_before(tool, args)
@@ -480,7 +480,7 @@ sequenceDiagram
     Tool-->>Registry: result string
     Registry-->>Dispatch: result string
     Dispatch->>Callbacks: on_after(tool, args, result)
-    Callbacks-->>Dispatch: (AuditLogger writes SQLite; TUIUpdater posts ReactStepReady)
+    Callbacks-->>Dispatch: AuditLogger writes SQLite, TUIUpdater posts ReactStepReady
     Dispatch-->>Loop: result string
     Loop->>Loop: append {"role": "tool", "content": result, "name": fn_name} to messages[]
     Loop->>Ollama: messages[] (now includes tool result)
@@ -875,7 +875,7 @@ Model issues no tool calls:
 
 **No deduplication in `conversations` table.** `stash/persistence/sqlite.py:116–120` — every `add_message()` call is an unconditional `INSERT`. If a bug causes the same message to be written twice (e.g. if `on_task_submitted` fires twice), duplicate entries accumulate and inflate retrieved history.
 
-**`session_id IS ?` bug risk in SQLite.** `stash/persistence/sqlite.py:139` — `IS ?` is used (correctly) for nullable equality, but the query returns all chat messages where `session_id` matches the UUID string. If `session_id` is accidentally `None` (e.g. `config` dict has no `_session_id` key), the query returns all chat messages with `session_id IS NULL`, mixing sessions.
+~~**`session_id IS ?` bug risk in SQLite.**~~ Fixed (`stash/persistence/sqlite.py:136–140`): added an explicit `None` guard that logs a warning and returns `[]` before the query runs; the SQL operator was also changed from `IS` to `=` so that any `None` slipping past the guard produces no rows rather than matching every NULL-session row.
 
 ### Token budget risks
 

@@ -115,10 +115,14 @@ def make_app(tmp_path, mock_scheduler, mock_agent_factory, monkeypatch):
         from stash.tui.screens.main import MainScreen
         self.push_screen(MainScreen(model="test-model"))
         self._scheduler.start()
-        try:
-            self.screen.query_one("SidebarWidget").load_rules(self._rules_db.all())
-        except Exception:
-            pass
+        # push_screen schedules mounting; SidebarWidget children aren't composed yet.
+        # Defer load_rules to after the next refresh so the widget tree is ready.
+        def _load_rules():
+            try:
+                self.screen.query_one("SidebarWidget").load_rules(self._rules_db.all())
+            except Exception:
+                pass
+        self.call_after_refresh(_load_rules)
 
     monkeypatch.setattr(StashApp, "on_mount", _test_on_mount)
 
