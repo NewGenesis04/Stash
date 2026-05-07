@@ -104,7 +104,7 @@ class StashApp(App):
         Binding("ctrl+l", "focus_audit_log", "Audit log"),
         Binding("ctrl+r", "focus_rules", "Rules"),
         Binding("ctrl+o", "change_model", "Change model"),
-        Binding("ctrl+p", "open_locations", "Locations"),
+        Binding("ctrl+k", "open_locations", "Locations"),
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
