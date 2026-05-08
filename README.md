@@ -1,5 +1,7 @@
 # Stash
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/NewGenesis04/Stash)
+
 I built this because Google announced Gemma 4 and my brain wouldn't stop.
 
 Not because of the benchmarks — because of what the benchmarks *meant*. A model that capable, running on a laptop, with no cloud, no API key, no monthly bill quietly climbing in the background. That's not a product announcement. That's a shift. And once you see it, you start looking at your machine differently.
