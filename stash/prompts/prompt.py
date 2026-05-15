@@ -71,15 +71,52 @@ def _system_context() -> str:
     return f"Home: {home}\nOS: {sys.platform}"
 
 
-def build_system_prompt(preferences: str | None = None) -> str:
+PLAN_MODE_BLOCK = """\
+
+
+## Mode: Plan
+
+You are in PLAN MODE. You are mapping out a sequence of steps for the user to review —
+nothing is being executed yet.
+
+- Write tools (mv, rename, mkdir, rm, resolve_location) will return "[plan mode — not
+  executed]". This is expected. Do not retry them. Record the intent and move to the
+  next step.
+- Read tools (ls, glob) run normally so you can understand the current filesystem state.
+
+Work through the full task in order, calling tools as if you were executing. When done,
+give a concise summary of what will happen if the user approves: which files move, get
+renamed, or are deleted, and in what order.\
+"""
+
+EXECUTE_FROM_PLAN_BLOCK = """\
+
+
+## Mode: Execute
+
+The user approved the plan. You are now executing for real.
+
+The conversation history contains the planning phase. Any step that returned "[plan mode
+— not executed]" was not applied. Re-execute each of those steps now — write tools will
+run. Follow the same sequence as the plan.\
+"""
+
+
+def build_system_prompt(preferences: str | None = None, mode: str = "default") -> str:
     from pathlib import Path
     from stash.prompts.examples import get_examples
-    
+
     home = str(Path.home())
     context_block = f"\n\n## System Context\n{_system_context()}"
     examples_block = f"\n\n## Examples\n\n{get_examples(home)}"
-    
+
     base = SYSTEM_PROMPT + context_block + examples_block
+
+    if mode == "plan":
+        base += PLAN_MODE_BLOCK
+    elif mode == "execute":
+        base += EXECUTE_FROM_PLAN_BLOCK
+
     if not preferences:
         return base
     return f"{base}\n\n## User Preferences\n{preferences}"

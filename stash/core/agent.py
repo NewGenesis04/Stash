@@ -75,10 +75,13 @@ class Agent:
 
         if initial_messages:
             messages = list(initial_messages)
+            preferences = self._load_preferences()
+            messages[0] = {"role": "system", "content": build_system_prompt(preferences, mode="execute")}
             log.debug("agent.resuming_from_cache", extra={**ctx, "message_count": len(messages)})
         else:
             preferences = self._load_preferences()
-            messages = [{"role": "system", "content": build_system_prompt(preferences)}]
+            mode = "plan" if dry_run else "default"
+            messages = [{"role": "system", "content": build_system_prompt(preferences, mode=mode)}]
             messages.extend(self._load_session_history())
             messages.append({"role": "user", "content": task})
 
